@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "こどもアプリ",
+    "slug": "child-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a14"
+      }
+    },
+    "web": {}
+  }
+}

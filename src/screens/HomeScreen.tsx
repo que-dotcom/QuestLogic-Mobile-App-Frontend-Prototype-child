@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import AppText from '../components/AppText';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
 import { getTitleByExp } from '../utils/titleHelper';
+import AppText from '../components/AppText';
 import HeaderProfile from '../components/HeaderProfile';
 import StatusBars from '../components/StatusBars';
 import TimeDisplay from '../components/TimeDisplay';
@@ -40,11 +40,12 @@ export default function HomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      {/*
+       * ScrollView を廃止し、フラットな flex column レイアウトに変更。
+       * ScrollView 内では子の flex:1 が高さゼロに折りたたまれ、
+       * MainActionArea（羊皮紙）が表示されない問題が発生していたため。
+       */}
+      <View style={styles.content}>
         {/* A. ヘッダー（プロフィール） */}
         <HeaderProfile title={title} userName={userName} />
 
@@ -58,7 +59,7 @@ export default function HomeScreen({ navigation }: Props) {
           level={level}
         />
 
-        {/* D. メインエリア（地図/スクロール領域） */}
+        {/* D. メインエリア（地図/羊皮紙）— flex:1 で残り全高を占有 */}
         <MainActionArea
           hasHomework={hasHomework}
           homeworkList={homeworkList}
@@ -76,7 +77,7 @@ export default function HomeScreen({ navigation }: Props) {
             </AppText>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -86,18 +87,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a14',
   },
-  scrollView: {
+  content: {
     flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 8,
   },
   devToggle: {
     alignSelf: 'center',
-    marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
+    marginBottom: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 14,
     backgroundColor: '#333344',
     borderRadius: 4,
   },

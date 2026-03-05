@@ -9,8 +9,12 @@ interface HeaderProfileProps {
 
 export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
   return (
+    /*
+     * Figma: Group 352, x=-5, y=4, width=382, height=111
+     * 横方向ほぼフル幅。左右 marginHorizontal: 6 で端に合わせる。
+     */
     <View style={styles.container}>
-      {/* キャラクター枠 */}
+      {/* キャラクター枠（左側） */}
       <View style={styles.characterFrame}>
         <Image
           source={require('../../asset/home/images/Default Character.png')}
@@ -19,7 +23,7 @@ export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
         />
       </View>
 
-      {/* 称号・ユーザー名 */}
+      {/* 称号・ユーザー名（右側） */}
       <View style={styles.infoContainer}>
         <AppText style={styles.titleText}>{title}</AppText>
         <AppText style={styles.nameText}>{userName}</AppText>
@@ -31,38 +35,38 @@ export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 8,
-    marginTop: 8,
+    alignItems: 'stretch',
+    marginHorizontal: 6,
+    marginTop: 6,
     borderWidth: 3,
-    borderColor: '#5a5a7a',
-    backgroundColor: '#0d0d1e',
+    borderColor: '#4a4a6a',
+    backgroundColor: '#0d0d20',
     minHeight: 90,
   },
   characterFrame: {
-    width: 72,
-    height: 84,
+    width: 70,
     borderRightWidth: 3,
-    borderRightColor: '#5a5a7a',
-    backgroundColor: '#12122a',
+    borderRightColor: '#4a4a6a',
+    backgroundColor: '#10102a',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   characterImage: {
-    width: 58,
-    height: 72,
+    width: 54,
+    height: 68,
   },
   infoContainer: {
     flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   titleText: {
-    fontSize: 14,
-    color: '#c0c0d8',
+    fontSize: 13,
+    color: '#b8b8d0',
   },
   nameText: {
     fontSize: 22,

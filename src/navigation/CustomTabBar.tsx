@@ -9,6 +9,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
+/*
+ * Figma上のタブバー寸法: width=358, height=83。
+ * height を固定値で指定し、SafeArea への追加はバー画像の外側（下）に行う。
+ * これにより ImageBackground 自体が間延びしない。
+ */
+const TAB_BAR_HEIGHT = 83;
+const TAB_BAR_BG_COLOR = '#8a5a22';
+
 const TAB_ICONS = {
   Home: require('../../asset/home/images/Home icon.png'),
   Camera: require('../../asset/home/images/Camera icon.png'),
@@ -25,7 +33,12 @@ export default function CustomTabBar({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: insets.bottom }]}>
+    <View style={styles.wrapper}>
+      {/*
+       * Menu Bar.png をタブバーの背景として使用。
+       * height を固定値にすることで肥大化を防ぐ。
+       * resizeMode="stretch" でバー画像を指定幅に引き伸ばす（高さ固定のため比率崩れは無い）。
+       */}
       <ImageBackground
         source={require('../../asset/home/images/Menu Bar.png')}
         style={styles.tabBar}
@@ -55,35 +68,53 @@ export default function CustomTabBar({
                 source={iconSource}
                 style={[
                   styles.tabIcon,
-                  { opacity: isFocused ? 1 : 0.55 },
+                  { opacity: isFocused ? 1 : 0.5 },
                 ]}
                 resizeMode="contain"
+                /*
+                 * shadow 系プロパティは一切使用しない。
+                 * アイコンに影がかかる場合は PNG 自体の問題。
+                 */
               />
             </TouchableOpacity>
           );
         })}
       </ImageBackground>
+
+      {/*
+       * SafeArea 分の余白は ImageBackground の外側（下）に配置。
+       * タブバー画像が引き伸ばされず、同じ背景色で自然に続く。
+       */}
+      <View
+        style={[
+          styles.safeAreaExtension,
+          { height: insets.bottom },
+        ]}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: {
-    backgroundColor: '#7a4a1a',
+    backgroundColor: TAB_BAR_BG_COLOR,
   },
   tabBar: {
+    height: TAB_BAR_HEIGHT,
     flexDirection: 'row',
-    height: 72,
     alignItems: 'center',
   },
   tabItem: {
     flex: 1,
+    height: TAB_BAR_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
   },
   tabIcon: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
+  },
+  safeAreaExtension: {
+    backgroundColor: TAB_BAR_BG_COLOR,
   },
 });

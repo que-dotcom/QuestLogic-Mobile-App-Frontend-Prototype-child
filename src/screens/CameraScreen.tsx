@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import {
   View,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
   StyleSheet,
   Platform,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import AppText from '../components/AppText';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -28,10 +31,63 @@ export default function CameraScreen() {
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [subjectOpen, setSubjectOpen] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
 
   const handleSubjectSelect = (subject: string) => {
     setSelectedSubject(subject);
     setSubjectOpen(false);
+  };
+
+  // ── 画像取得：カメラ ──────────────────────────────────────
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', 'カメラへのアクセスを許可してください');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  // ── 画像取得：アルバム ────────────────────────────────────
+  const pickFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', 'メディアライブラリへのアクセスを許可してください');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
+
+  // ── 写真を選択ボタン：選択肢ポップアップ ──────────────────
+  const handlePickPhoto = () => {
+    Alert.alert('写真を選択', '', [
+      { text: 'カメラで撮影', onPress: pickFromCamera },
+      { text: 'アルバムから選択', onPress: pickFromLibrary },
+      { text: 'キャンセル', style: 'cancel' },
+    ]);
+  };
+
+  // ── 登録するボタン：バリデーション ───────────────────────
+  const handleRegister = () => {
+    if (!photoUri || !homeworkName.trim() || !selectedSubject) {
+      Alert.alert('エラー', 'すべての項目を入力・選択してください');
+      return;
+    }
+    Alert.alert('成功！');
   };
 
   return (
@@ -55,11 +111,23 @@ export default function CameraScreen() {
               {'宿題の写真と内容を\n入力しよう！'}
             </AppText>
 
-            {/* 写真プレビュー枠 */}
-            <View style={styles.photoPreview} />
+            {/* 写真プレビュー枠：画像あり→Image表示、なし→空枠 */}
+            <View style={styles.photoPreview}>
+              {photoUri && (
+                <Image
+                  source={{ uri: photoUri }}
+                  style={styles.photoImage}
+                  resizeMode="cover"
+                />
+              )}
+            </View>
 
             {/* 写真を選択ボタン */}
-            <TouchableOpacity style={styles.photoButton} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.photoButton}
+              activeOpacity={0.7}
+              onPress={handlePickPhoto}
+            >
               <AppText style={styles.photoButtonText}>写真を選択　＞</AppText>
             </TouchableOpacity>
 
@@ -127,7 +195,11 @@ export default function CameraScreen() {
             </View>
 
             {/* 登録するボタン */}
-            <TouchableOpacity style={styles.registerButton} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.registerButton}
+              activeOpacity={0.8}
+              onPress={handleRegister}
+            >
               <AppText style={styles.registerButtonText}>登録する</AppText>
             </TouchableOpacity>
 
@@ -175,6 +247,12 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     backgroundColor: 'rgba(20, 20, 20, 0.45)',
     marginBottom: 18,
+  },
+
+  // 取得済み画像をプレビュー枠いっぱいに表示
+  photoImage: {
+    width: '100%',
+    height: '100%',
   },
 
   // ---------- 写真選択ボタン ----------

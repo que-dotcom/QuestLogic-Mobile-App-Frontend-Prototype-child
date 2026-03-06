@@ -8,13 +8,17 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Animated,
   StyleSheet,
   Platform,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import AppText from '../components/AppText';
+import { RootTabParamList } from '../navigation/AppNavigator';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -44,7 +48,41 @@ const COMPLETION_BOX_H = COMPLETION_BOX_W * (208 / 166);
 const ALERT_PHOTO_W = SCREEN_WIDTH * 0.92;
 const ALERT_PHOTO_H = ALERT_PHOTO_W * (160 / 363);
 
+// ── 採点結果画面の写真ボックスサイズ
+// Figma: width:117, height:161 → アスペクト比 1:1.376
+const RESULT_BOX_W = SCREEN_WIDTH * 0.3;
+const RESULT_BOX_H = RESULT_BOX_W * (161 / 117);
+
+// ── 結果画面ボタン画像サイズ
+// Button S (Figma: width:175, height:44)
+const BUTTON_S_W = SCREEN_WIDTH * 0.45;
+const BUTTON_S_H = BUTTON_S_W * (44 / 175);
+// Button M (Figma: width:291, height:96)
+const BUTTON_M_W = SCREEN_WIDTH * 0.74;
+const BUTTON_M_H = BUTTON_M_W * (96 / 291);
+
+// ── バックエンドから受け取る予定のレスポンス形式（モック）
+// TODO: 実際の通信実装時はここをAPIレスポンスに差し替える
+const mockBackendResponse = {
+  summary: 'プリントの問題を自ら...',
+  score_breakdown: { volume: 8, process: 7, carefulness: 9, review: 1 },
+  total_score: 75,
+  features: [] as string[],
+  suspicion_flag: true,
+  suspicion_reason: '問4の選択肢が...',
+  feedback_to_child: '問題を全部書き写して...',
+  feedback_to_parent: '問題文の書き写しから...',
+};
+
+// ── 10点満点のスコアを5段階の星文字列に変換（切り捨て）──
+const renderStars = (score10: number): string => {
+  const filled = Math.floor(score10 / 2);
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled);
+};
+
 export default function CameraScreen() {
+  const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
+
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [subjectOpen, setSubjectOpen] = useState(false);
@@ -53,12 +91,48 @@ export default function CameraScreen() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isChallenging, setIsChallenging] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  // 'before' = 挑戦前写真選択中、'after' = 挑戦後写真選択中、null = 非表示
+  const [photoModalType, setPhotoModalType] = useState<'before' | 'after' | null>(null);
   const [afterPhotoUri, setAfterPhotoUri] = useState<string | null>(null);
   const [isFinished, setIsFinished] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
+  const [isResult, setIsResult] = useState(false);
+  const [isBackendError, setIsBackendError] = useState(false);
 
   // setInterval の ID を ref で保持し、外部から即座に停止できるようにする
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 非同期処理中のアンマウントによる state 更新を防止
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  // 採点中アニメーション（宝箱 + テキストを上下にゆっくりループ）
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isScoring) {
+      bounceAnim.setValue(0);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounceAnim, {
+          toValue: -10,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bounceAnim, {
+          toValue: 10,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isScoring]);
 
   // MM:SS フォーマット変換
   const formatTime = (secs: number): string => {
@@ -92,8 +166,8 @@ export default function CameraScreen() {
     setSubjectOpen(false);
   };
 
-  // ── 画像取得：カメラ ──────────────────────────────────────
-  const pickFromCamera = async () => {
+  // ── カメラから写真取得（before / after 共用） ──────────────
+  const pickPhotoFromCamera = async (type: 'before' | 'after') => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('権限エラー', 'カメラへのアクセスを許可してください');
@@ -105,12 +179,20 @@ export default function CameraScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      if (type === 'before') {
+        setPhotoUri(uri);
+      } else {
+        stopTimer();
+        setAfterPhotoUri(uri);
+        setIsFinished(true);
+      }
+      setPhotoModalType(null);
     }
   };
 
-  // ── 画像取得：アルバム ────────────────────────────────────
-  const pickFromLibrary = async () => {
+  // ── アルバムから写真取得（before / after 共用） ────────────
+  const pickPhotoFromLibrary = async (type: 'before' | 'after') => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('権限エラー', 'メディアライブラリへのアクセスを許可してください');
@@ -122,61 +204,74 @@ export default function CameraScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      if (type === 'before') {
+        setPhotoUri(uri);
+      } else {
+        stopTimer();
+        setAfterPhotoUri(uri);
+        setIsFinished(true);
+      }
+      setPhotoModalType(null);
     }
   };
 
-  // ── 写真を選択ボタン：選択肢ポップアップ ──────────────────
+  // ── 写真を選択ボタン → モーダル（before 用）を開く ──────────
   const handlePickPhoto = () => {
-    Alert.alert('写真を選択', '', [
-      { text: 'カメラで撮影', onPress: pickFromCamera },
-      { text: 'アルバムから選択', onPress: pickFromLibrary },
-      { text: 'キャンセル', style: 'cancel' },
-    ]);
+    setPhotoModalType('before');
   };
 
-  // ── 挑戦後写真：カメラ（タイマー停止→完了画面へ） ────────
-  const pickAfterPhotoFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('権限エラー', 'カメラへのアクセスを許可してください');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      stopTimer();
-      setAfterPhotoUri(result.assets[0].uri);
-      setIsFinished(true);
-      setShowPhotoModal(false);
-    }
+  // ── 全 State をリセットして初期状態に戻す ──────────────────
+  const resetCameraScreen = () => {
+    setHomeworkName('');
+    setSelectedSubject(null);
+    setSubjectOpen(false);
+    setPhotoUri(null);
+    setShowErrorModal(false);
+    setShowSuccessModal(false);
+    setIsChallenging(false);
+    setSecondsElapsed(0);
+    setPhotoModalType(null);
+    setAfterPhotoUri(null);
+    setIsFinished(false);
+    setIsScoring(false);
+    setIsResult(false);
+    setIsBackendError(false);
+    stopTimer();
   };
 
-  // ── 挑戦後写真：アルバム（タイマー停止→完了画面へ） ──────
-  const pickAfterPhotoFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('権限エラー', 'メディアライブラリへのアクセスを許可してください');
-      return;
+  // ── バックエンドへの送信試行（ダミー）─────────────────────
+  // TODO: 実際の通信実装時は attemptSend の中を fetch 等に差し替える
+  const sendHomeworkDataWithRetry = async (payload: object): Promise<boolean> => {
+    const TOTAL_TIMEOUT_MS = 15000; // 全体タイムアウト: 15秒
+    const RETRY_INTERVAL_MS = 3000; // リトライ間隔: 3秒
+    const startTime = Date.now();
+
+    const attemptSend = async (): Promise<boolean> => {
+      // ダミー遅延（実際のAPIコールに差し替え）
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return false; // モック: 常に失敗 → 実装時に true/false を返すよう変更
+    };
+
+    while (true) {
+      if (!isMountedRef.current) return false;
+      if (Date.now() - startTime >= TOTAL_TIMEOUT_MS) break; // タイムアウト
+
+      const success = await attemptSend();
+      if (success) return true;
+
+      // リトライ前に間隔を空ける（残り時間を超えない）
+      const remaining = TOTAL_TIMEOUT_MS - (Date.now() - startTime);
+      if (remaining <= 0) break;
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(RETRY_INTERVAL_MS, remaining))
+      );
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      stopTimer();
-      setAfterPhotoUri(result.assets[0].uri);
-      setIsFinished(true);
-      setShowPhotoModal(false);
-    }
+    return false;
   };
 
-  // ── 宿題を完了する：ペイロードをコンソール出力（バックエンド送信モック） ──
-  const handleSubmitHomework = () => {
+  // ── 宿題を完了する：送信 → 採点中 → 結果へ ────────────────
+  const handleSubmitHomework = async () => {
     const payload = {
       学年: '中学1年生',
       教科: selectedSubject,
@@ -189,6 +284,20 @@ export default function CameraScreen() {
       },
     };
     console.log('【送信データ】:', payload);
+
+    setIsScoring(true);
+
+    const success = await sendHomeworkDataWithRetry(payload);
+    if (!isMountedRef.current) return;
+
+    if (success) {
+      setIsScoring(false);
+      setIsResult(true);
+    } else {
+      setIsBackendError(true);
+      setIsScoring(false);
+      setIsResult(true);
+    }
   };
 
   // ── 登録するボタン：バリデーション ───────────────────────
@@ -207,7 +316,117 @@ export default function CameraScreen() {
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {isFinished ? (
+        {isResult ? (
+          /* ══════════ 採点結果画面 ══════════ */
+          <ScrollView
+            contentContainerStyle={styles.resultScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* バックエンドエラー時のみ赤文字表示 */}
+            {isBackendError && (
+              <AppText style={styles.backendErrorText}>バックエンドエラー</AppText>
+            )}
+
+            {/* SCORE：（エラー時はスコア数値なし） */}
+            <AppText style={styles.resultScore}>
+              {isBackendError
+                ? 'SCORE：'
+                : `SCORE：${mockBackendResponse.total_score}点`}
+            </AppText>
+
+            {/* 二重線 */}
+            <View style={styles.resultScoreDividerWrap}>
+              <View style={styles.resultScoreDividerLine} />
+              <View style={[styles.resultScoreDividerLine, { marginTop: 3 }]} />
+            </View>
+
+            {/* 写真枠：エラー時は挑戦前のみ1枚表示 */}
+            <View style={styles.resultPhotosRow}>
+              {/* 左：挑戦前の写真（beforePhotoUri = photoUri） */}
+              <View style={styles.resultPhotoBox}>
+                {photoUri && (
+                  <Image source={{ uri: photoUri }} style={styles.completionPhotoImg} resizeMode="cover" />
+                )}
+              </View>
+              {/* 右：挑戦後の写真（エラー時は非表示） */}
+              {!isBackendError && (
+                <View style={styles.resultPhotoBox}>
+                  {afterPhotoUri && (
+                    <Image source={{ uri: afterPhotoUri }} style={styles.completionPhotoImg} resizeMode="cover" />
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* 評価項目：エラー時は星なし・ラベルのみ */}
+            <View style={styles.ratingContainer}>
+              <AppText style={styles.ratingText}>
+                {`作業量：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.volume)}`}
+              </AppText>
+              <AppText style={styles.ratingText}>
+                {`過程：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.process)}`}
+              </AppText>
+              <AppText style={styles.ratingText}>
+                {`丁寧さ：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.carefulness)}`}
+              </AppText>
+              <AppText style={styles.ratingText}>
+                {`振り返り：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.review)}`}
+              </AppText>
+            </View>
+
+            {/* AIアドバイスボタン画像（エラー時は Button M2.png に切り替え） */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.resultButtonWrap}
+              onPress={() => { resetCameraScreen(); navigation.navigate('Reward'); }}
+            >
+              <Image
+                source={
+                  isBackendError
+                    ? require('../../asset/camera/images/Button M2.png')
+                    : require('../../asset/camera/images/Button M.png')
+                }
+                style={styles.buttonMImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            {/* 振り返りを終わるボタン画像 */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.resultButtonWrap}
+              onPress={() => { resetCameraScreen(); navigation.navigate('Home'); }}
+            >
+              <Image
+                source={require('../../asset/camera/images/Button S.png')}
+                style={styles.buttonSImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            <View style={styles.bottomPad} />
+          </ScrollView>
+
+        ) : isScoring ? (
+          /* ══════════ 採点中画面 ══════════ */
+          <View style={styles.scoringWrapper}>
+            {/* 宝箱とテキストを1つの Animated.View で囲んで上下ループアニメーション */}
+            <Animated.View
+              style={[
+                styles.scoringAnimated,
+                { transform: [{ translateY: bounceAnim }] },
+              ]}
+            >
+              <Image
+                source={require('../../asset/camera/images/Chest.png')}
+                style={styles.chestScoring}
+                resizeMode="contain"
+              />
+              <AppText style={styles.scoringText}>採点中...</AppText>
+            </Animated.View>
+          </View>
+
+        ) : isFinished ? (
           /* ══════════ 完了画面 UI ══════════ */
           <ScrollView
             contentContainerStyle={styles.completionScrollContent}
@@ -231,11 +450,6 @@ export default function CameraScreen() {
                 )}
               </View>
             </View>
-
-            {/* 写真を選択ボタン（撮り直し用・現状UIのみ） */}
-            <TouchableOpacity style={styles.photoButton} activeOpacity={0.7}>
-              <AppText style={styles.photoButtonText}>写真を選択　＞</AppText>
-            </TouchableOpacity>
 
             {/* 宿題を完了するボタン */}
             <TouchableOpacity
@@ -267,7 +481,7 @@ export default function CameraScreen() {
             <TouchableOpacity
               style={styles.finishButton}
               activeOpacity={0.8}
-              onPress={() => setShowPhotoModal(true)}
+              onPress={() => setPhotoModalType('after')}
             >
               <AppText style={styles.finishButtonText}>おわった宿題を{'\n'}すぐ写真に撮る！</AppText>
             </TouchableOpacity>
@@ -409,8 +623,8 @@ export default function CameraScreen() {
           </KeyboardAvoidingView>
         )}
 
-        {/* ── 写真撮影モーダル（Alerts photo.png）── タイマーは裏で継続 */}
-        {showPhotoModal && (
+        {/* ── 写真撮影モーダル（Alerts photo.png）── before/after 共用 */}
+        {photoModalType !== null && (
           <View style={styles.modalOverlay}>
             <View style={styles.alertPhotoContainer}>
               <Image
@@ -421,19 +635,19 @@ export default function CameraScreen() {
               {/* 「やめる」ヒットボックス：左列 */}
               <TouchableOpacity
                 style={styles.photoModalCancelHitbox}
-                onPress={() => setShowPhotoModal(false)}
+                onPress={() => setPhotoModalType(null)}
                 activeOpacity={0.7}
               />
               {/* 「アルバム」ヒットボックス：中列 */}
               <TouchableOpacity
                 style={styles.photoModalAlbumHitbox}
-                onPress={pickAfterPhotoFromLibrary}
+                onPress={() => pickPhotoFromLibrary(photoModalType)}
                 activeOpacity={0.7}
               />
               {/* 「写真をとる」ヒットボックス：右列 */}
               <TouchableOpacity
                 style={styles.photoModalCameraHitbox}
-                onPress={pickAfterPhotoFromCamera}
+                onPress={() => pickPhotoFromCamera(photoModalType)}
                 activeOpacity={0.7}
               />
             </View>
@@ -657,6 +871,136 @@ const styles = StyleSheet.create({
   // ---------- タブバーオーバーレイ分の余白 ----------
   bottomPad: {
     height: TAB_BAR_HEIGHT + 24,
+  },
+
+  // ════════════════════════════════════════
+  //  採点中 UI（isScoring === true）
+  // ════════════════════════════════════════
+
+  // 採点中画面のルートコンテナ
+  scoringWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Animated.View（宝箱 + テキストを一体でアニメーション）
+  scoringAnimated: {
+    alignItems: 'center',
+  },
+
+  // 宝箱画像（採点中）
+  // Figma: 画面中央に大きく配置
+  chestScoring: {
+    width: SCREEN_WIDTH * 0.5,
+    height: SCREEN_WIDTH * 0.5 * 0.78,
+  },
+
+  // 「採点中...」テキスト
+  // Figma: fontSize:40, DotGothic16, 白文字, 中央揃え
+  scoringText: {
+    fontSize: 40,
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+
+  // ════════════════════════════════════════
+  //  採点結果画面 UI（isResult === true）
+  // ════════════════════════════════════════
+
+  resultScrollContent: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingHorizontal: 19,
+    paddingBottom: 20,
+  },
+
+  // 「SCORE：80点」タイトル
+  // Figma: fontSize:32, DotGothic16, 白文字, 中央揃え
+  resultScore: {
+    fontSize: 32,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+
+  // スコア下の二重線コンテナ
+  resultScoreDividerWrap: {
+    width: SCREEN_WIDTH - 38,
+    marginBottom: 16,
+  },
+
+  // 二重線の1本（2本並べることで二重線を表現）
+  resultScoreDividerLine: {
+    height: 2,
+    backgroundColor: '#FFFFFF',
+  },
+
+  // 挑戦前・挑戦後の写真横並び（結果画面）
+  resultPhotosRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+  },
+
+  // 結果画面の写真ボックス
+  // Figma: width:117, height:161, border:2px #fffbfb
+  resultPhotoBox: {
+    width: RESULT_BOX_W,
+    height: RESULT_BOX_H,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(20, 20, 20, 0.45)',
+    overflow: 'hidden',
+  },
+
+  // 評価項目（星）のコンテナ
+  ratingContainer: {
+    width: '100%',
+    paddingLeft: 4,
+    marginBottom: 16,
+  },
+
+  // 各評価行のテキスト
+  // Figma: fontSize:20, DotGothic16, 白文字, 左揃え, lineHeight:36
+  ratingText: {
+    fontSize: 20,
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    lineHeight: 36,
+  },
+
+  // バックエンドエラーテキスト（赤文字・上部）
+  // Figma: fontSize:32, DotGothic16, 赤文字, 中央揃え
+  backendErrorText: {
+    fontSize: 28,
+    color: '#ff0000',
+    textAlign: 'center',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+
+  // ボタン画像共通：中央揃えのラッパー
+  resultButtonWrap: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+
+  // Button M.png / Button M2.png（AIアドバイスボタン画像）
+  // Figma: width:291, height:96
+  buttonMImage: {
+    width: BUTTON_M_W,
+    height: BUTTON_M_H,
+  },
+
+  // Button S.png（振り返りを終わるボタン画像）
+  // Figma: width:175, height:44
+  buttonSImage: {
+    width: BUTTON_S_W,
+    height: BUTTON_S_H,
   },
 
   // ════════════════════════════════════════

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Image,
@@ -35,6 +35,15 @@ const DIALOG_IMG_H = DIALOG_IMG_W * (128 / 312);
 
 const SUBJECTS = ['国語', '数学(算数)', '理科', '社会', '英語', 'その他'] as const;
 
+// ── 完了画面の写真ボックスサイズ
+// Figma: 各ボックス width:166, height:208, 左margin:19, ギャップ:20
+const COMPLETION_BOX_W = (SCREEN_WIDTH - 19 * 2 - 20) / 2;
+const COMPLETION_BOX_H = COMPLETION_BOX_W * (208 / 166);
+
+// ── Alerts photo.png 推定サイズ（やめる／アルバム／写真をとる の3ボタン横並び）
+const ALERT_PHOTO_W = SCREEN_WIDTH * 0.92;
+const ALERT_PHOTO_H = ALERT_PHOTO_W * (160 / 363);
+
 export default function CameraScreen() {
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -42,6 +51,41 @@ export default function CameraScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isChallenging, setIsChallenging] = useState(false);
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [afterPhotoUri, setAfterPhotoUri] = useState<string | null>(null);
+  const [isFinished, setIsFinished] = useState(false);
+
+  // setInterval の ID を ref で保持し、外部から即座に停止できるようにする
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // MM:SS フォーマット変換
+  const formatTime = (secs: number): string => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // 挑戦中のみタイマーを起動。ref に ID を保存してクリーンアップも対応
+  useEffect(() => {
+    if (!isChallenging) return;
+    timerRef.current = setInterval(() => setSecondsElapsed((prev) => prev + 1), 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isChallenging]);
+
+  // タイマーを即座に停止する共通関数
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const handleSubjectSelect = (subject: string) => {
     setSelectedSubject(subject);
@@ -91,6 +135,62 @@ export default function CameraScreen() {
     ]);
   };
 
+  // ── 挑戦後写真：カメラ（タイマー停止→完了画面へ） ────────
+  const pickAfterPhotoFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', 'カメラへのアクセスを許可してください');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      stopTimer();
+      setAfterPhotoUri(result.assets[0].uri);
+      setIsFinished(true);
+      setShowPhotoModal(false);
+    }
+  };
+
+  // ── 挑戦後写真：アルバム（タイマー停止→完了画面へ） ──────
+  const pickAfterPhotoFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('権限エラー', 'メディアライブラリへのアクセスを許可してください');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      stopTimer();
+      setAfterPhotoUri(result.assets[0].uri);
+      setIsFinished(true);
+      setShowPhotoModal(false);
+    }
+  };
+
+  // ── 宿題を完了する：ペイロードをコンソール出力（バックエンド送信モック） ──
+  const handleSubmitHomework = () => {
+    const payload = {
+      学年: '中学1年生',
+      教科: selectedSubject,
+      宿題の名前: homeworkName,
+      挑戦前の写真URI: photoUri,
+      挑戦後の写真URI: afterPhotoUri,
+      かかった時間: {
+        秒数: secondsElapsed,
+        フォーマット: formatTime(secondsElapsed),
+      },
+    };
+    console.log('【送信データ】:', payload);
+  };
+
   // ── 登録するボタン：バリデーション ───────────────────────
   const handleRegister = () => {
     if (!photoUri || !homeworkName.trim() || !selectedSubject) {
@@ -107,116 +207,238 @@ export default function CameraScreen() {
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <KeyboardAvoidingView
-          style={styles.flex1}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        {isFinished ? (
+          /* ══════════ 完了画面 UI ══════════ */
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={styles.completionScrollContent}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
           >
             {/* タイトル */}
-            <AppText style={styles.title}>
-              {'宿題の写真と内容を\n入力しよう！'}
+            <AppText style={styles.completionTitle}>
+              {'写真を登録して\n宿題を完了させよう！'}
             </AppText>
 
-            {/* 写真プレビュー枠：画像あり→Image表示、なし→空枠 */}
-            <View style={styles.photoPreview}>
-              {photoUri && (
-                <Image
-                  source={{ uri: photoUri }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
-              )}
+            {/* 挑戦前・挑戦後の写真を横並び */}
+            <View style={styles.completionPhotosRow}>
+              <View style={styles.completionPhotoBox}>
+                {photoUri && (
+                  <Image source={{ uri: photoUri }} style={styles.completionPhotoImg} resizeMode="cover" />
+                )}
+              </View>
+              <View style={styles.completionPhotoBox}>
+                {afterPhotoUri && (
+                  <Image source={{ uri: afterPhotoUri }} style={styles.completionPhotoImg} resizeMode="cover" />
+                )}
+              </View>
             </View>
 
-            {/* 写真を選択ボタン */}
-            <TouchableOpacity
-              style={styles.photoButton}
-              activeOpacity={0.7}
-              onPress={handlePickPhoto}
-            >
+            {/* 写真を選択ボタン（撮り直し用・現状UIのみ） */}
+            <TouchableOpacity style={styles.photoButton} activeOpacity={0.7}>
               <AppText style={styles.photoButtonText}>写真を選択　＞</AppText>
             </TouchableOpacity>
 
-            {/* 入力フォーム（テーブル風） */}
-            <View style={[styles.table, { width: TABLE_WIDTH }]}>
+            {/* 宿題を完了するボタン */}
+            <TouchableOpacity
+              style={styles.completeButton}
+              activeOpacity={0.8}
+              onPress={handleSubmitHomework}
+            >
+              <AppText style={styles.completeButtonText}>宿題を完了する</AppText>
+            </TouchableOpacity>
 
-              {/* 行1: 宿題の名前（TextInput） */}
-              <View style={[styles.tableRow, styles.tableRowDivider]}>
-                <View style={[styles.labelCell, styles.labelCellBorder]}>
-                  <AppText style={styles.labelText}>宿題の名前</AppText>
-                </View>
-                <View style={styles.valueCell}>
-                  <TextInput
-                    value={homeworkName}
-                    onChangeText={setHomeworkName}
-                    placeholder="宿題の名前を記入"
-                    placeholderTextColor="rgba(255,255,255,0.55)"
-                    style={styles.textInput}
-                    returnKeyType="done"
-                    underlineColorAndroid="transparent"
+            <View style={styles.bottomPad} />
+          </ScrollView>
+
+        ) : isChallenging ? (
+          /* ══════════ 挑戦中 UI ══════════ */
+          <View style={styles.challengeWrapper}>
+
+            {/* 1. 赤い角丸情報ボックス */}
+            <View style={styles.challengeInfoBox}>
+              <AppText style={styles.challengeInfoText}>
+                {'中学1年生：' + (selectedSubject ?? '') + '\n' + homeworkName + '\nに挑戦中！'}
+              </AppText>
+            </View>
+
+            {/* 2. タイマー */}
+            <AppText style={styles.timerText}>{formatTime(secondsElapsed)}</AppText>
+
+            {/* 3. 宿題を終えた！ボタン → 写真撮影モーダルを開く */}
+            <TouchableOpacity
+              style={styles.finishButton}
+              activeOpacity={0.8}
+              onPress={() => setShowPhotoModal(true)}
+            >
+              <AppText style={styles.finishButtonText}>おわった宿題を{'\n'}すぐ写真に撮る！</AppText>
+            </TouchableOpacity>
+
+            {/* 4. キャラクターと宝箱エリア */}
+            <View style={styles.charactersArea}>
+              <Image
+                source={require('../../asset/camera/images/Character on the left.png')}
+                style={styles.charLeft}
+                resizeMode="contain"
+              />
+              <Image
+                source={require('../../asset/camera/images/Chest.png')}
+                style={styles.chest}
+                resizeMode="contain"
+              />
+              <Image
+                source={require('../../asset/camera/images/Character on the right.png')}
+                style={styles.charRight}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* タブバー分の余白 */}
+            <View style={styles.bottomPad} />
+          </View>
+
+        ) : (
+          /* ══════════ 入力フォーム UI ══════════ */
+          <KeyboardAvoidingView
+            style={styles.flex1}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* タイトル */}
+              <AppText style={styles.title}>
+                {'宿題の写真と内容を\n入力しよう！'}
+              </AppText>
+
+              {/* 写真プレビュー枠：画像あり→Image表示、なし→空枠 */}
+              <View style={styles.photoPreview}>
+                {photoUri && (
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.photoImage}
+                    resizeMode="cover"
                   />
-                </View>
-              </View>
-
-              {/* 行2: 科目 + インライン展開ドロップダウン */}
-              <View>
-                {/* 科目ヘッダー行 */}
-                <View style={subjectOpen ? styles.tableRowDivider : undefined}>
-                  <View style={styles.tableRow}>
-                    <View style={[styles.labelCell, styles.labelCellBorder]}>
-                      <AppText style={styles.labelText}>科目</AppText>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.valueCell}
-                      activeOpacity={0.7}
-                      onPress={() => setSubjectOpen((prev) => !prev)}
-                    >
-                      <AppText style={styles.placeholderText}>
-                        {selectedSubject ?? '科目を選択'}{subjectOpen ? '　∨' : '　＞'}
-                      </AppText>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* 展開リスト */}
-                {subjectOpen && (
-                  <View style={styles.dropdownList}>
-                    {SUBJECTS.map((subject, index) => (
-                      <TouchableOpacity
-                        key={subject}
-                        style={[
-                          styles.dropdownItem,
-                          index < SUBJECTS.length - 1 && styles.dropdownItemDivider,
-                        ]}
-                        activeOpacity={0.7}
-                        onPress={() => handleSubjectSelect(subject)}
-                      >
-                        <AppText style={styles.dropdownItemText}>{subject}</AppText>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                 )}
               </View>
 
+              {/* 写真を選択ボタン */}
+              <TouchableOpacity
+                style={styles.photoButton}
+                activeOpacity={0.7}
+                onPress={handlePickPhoto}
+              >
+                <AppText style={styles.photoButtonText}>写真を選択　＞</AppText>
+              </TouchableOpacity>
+
+              {/* 入力フォーム（テーブル風） */}
+              <View style={[styles.table, { width: TABLE_WIDTH }]}>
+
+                {/* 行1: 宿題の名前（TextInput） */}
+                <View style={[styles.tableRow, styles.tableRowDivider]}>
+                  <View style={[styles.labelCell, styles.labelCellBorder]}>
+                    <AppText style={styles.labelText}>宿題の名前</AppText>
+                  </View>
+                  <View style={styles.valueCell}>
+                    <TextInput
+                      value={homeworkName}
+                      onChangeText={setHomeworkName}
+                      placeholder="宿題の名前を記入"
+                      placeholderTextColor="rgba(255,255,255,0.55)"
+                      style={styles.textInput}
+                      returnKeyType="done"
+                      underlineColorAndroid="transparent"
+                    />
+                  </View>
+                </View>
+
+                {/* 行2: 科目 + インライン展開ドロップダウン */}
+                <View>
+                  {/* 科目ヘッダー行 */}
+                  <View style={subjectOpen ? styles.tableRowDivider : undefined}>
+                    <View style={styles.tableRow}>
+                      <View style={[styles.labelCell, styles.labelCellBorder]}>
+                        <AppText style={styles.labelText}>科目</AppText>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.valueCell}
+                        activeOpacity={0.7}
+                        onPress={() => setSubjectOpen((prev) => !prev)}
+                      >
+                        <AppText style={styles.placeholderText}>
+                          {selectedSubject ?? '科目を選択'}{subjectOpen ? '　∨' : '　＞'}
+                        </AppText>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* 展開リスト */}
+                  {subjectOpen && (
+                    <View style={styles.dropdownList}>
+                      {SUBJECTS.map((subject, index) => (
+                        <TouchableOpacity
+                          key={subject}
+                          style={[
+                            styles.dropdownItem,
+                            index < SUBJECTS.length - 1 && styles.dropdownItemDivider,
+                          ]}
+                          activeOpacity={0.7}
+                          onPress={() => handleSubjectSelect(subject)}
+                        >
+                          <AppText style={styles.dropdownItemText}>{subject}</AppText>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+              </View>
+
+              {/* 登録するボタン */}
+              <TouchableOpacity
+                style={styles.registerButton}
+                activeOpacity={0.8}
+                onPress={handleRegister}
+              >
+                <AppText style={styles.registerButtonText}>この宿題に挑戦！</AppText>
+              </TouchableOpacity>
+
+              {/* タブバー（オーバーレイ）分の余白 */}
+              <View style={styles.bottomPad} />
+            </ScrollView>
+          </KeyboardAvoidingView>
+        )}
+
+        {/* ── 写真撮影モーダル（Alerts photo.png）── タイマーは裏で継続 */}
+        {showPhotoModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.alertPhotoContainer}>
+              <Image
+                source={require('../../asset/camera/images/Alerts photo.png')}
+                style={styles.alertPhotoImage}
+                resizeMode="contain"
+              />
+              {/* 「やめる」ヒットボックス：左列 */}
+              <TouchableOpacity
+                style={styles.photoModalCancelHitbox}
+                onPress={() => setShowPhotoModal(false)}
+                activeOpacity={0.7}
+              />
+              {/* 「アルバム」ヒットボックス：中列 */}
+              <TouchableOpacity
+                style={styles.photoModalAlbumHitbox}
+                onPress={pickAfterPhotoFromLibrary}
+                activeOpacity={0.7}
+              />
+              {/* 「写真をとる」ヒットボックス：右列 */}
+              <TouchableOpacity
+                style={styles.photoModalCameraHitbox}
+                onPress={pickAfterPhotoFromCamera}
+                activeOpacity={0.7}
+              />
             </View>
-
-            {/* 登録するボタン */}
-            <TouchableOpacity
-              style={styles.registerButton}
-              activeOpacity={0.8}
-              onPress={handleRegister}
-            >
-              <AppText style={styles.registerButtonText}>この宿題に挑戦！</AppText>
-            </TouchableOpacity>
-
-            {/* タブバー（オーバーレイ）分の余白 */}
-            <View style={styles.bottomPad} />
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </View>
+        )}
 
         {/* ── エラーモーダル（Alerts.png）── */}
         {showErrorModal && (
@@ -255,7 +477,11 @@ export default function CameraScreen() {
               {/* 「挑戦する！」ヒットボックス：右列・下部 */}
               <TouchableOpacity
                 style={styles.dialogConfirmHitbox}
-                onPress={() => Alert.alert('挑戦中')}
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  setSecondsElapsed(0);
+                  setIsChallenging(true);
+                }}
                 activeOpacity={0.7}
               />
             </View>
@@ -434,6 +660,151 @@ const styles = StyleSheet.create({
   },
 
   // ════════════════════════════════════════
+  //  完了画面 UI（isFinished === true）
+  // ════════════════════════════════════════
+
+  completionScrollContent: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+
+  // タイトル: Figma fontSize:32, 中央揃え
+  completionTitle: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 1,
+    lineHeight: 44,
+    marginBottom: 24,
+  },
+
+  // 2枚の写真ボックスを横並びにするコンテナ
+  completionPhotosRow: {
+    flexDirection: 'row',
+    gap: 20,
+    marginBottom: 20,
+    paddingHorizontal: 19,
+  },
+
+  // 挑戦前・挑戦後の写真枠（各 166×208 相当）
+  // Figma: border:2px #fffbfb, bg:#1e1e1e
+  completionPhotoBox: {
+    width: COMPLETION_BOX_W,
+    height: COMPLETION_BOX_H,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(20, 20, 20, 0.45)',
+    overflow: 'hidden',
+  },
+
+  completionPhotoImg: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // 「宿題を完了する」ボタン
+  // Figma: width:204, height:71, bg:#1e3c9f, border:white
+  completeButton: {
+    backgroundColor: '#1e3c9f',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    width: SCREEN_WIDTH * 0.52,
+    height: 71,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  completeButtonText: {
+    fontSize: 20,
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+
+  // ════════════════════════════════════════
+  //  挑戦中 UI
+  // ════════════════════════════════════════
+
+  // 挑戦中画面のルートコンテナ
+  challengeWrapper: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  // 赤い角丸ボックス
+  // Figma: left:19, top:25, width:361, height:144, borderRadius:50, bg:#9f1e1e
+  challengeInfoBox: {
+    width: SCREEN_WIDTH - 38,     // 19px margin × 2
+    marginTop: 24,
+    marginHorizontal: 19,
+    backgroundColor: '#9f1e1e',
+    borderRadius: 50,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 144,
+  },
+  challengeInfoText: {
+    fontSize: 26,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 1,
+    lineHeight: 40,
+  },
+
+  // タイマー
+  // Figma: fontSize:48, centered
+  timerText: {
+    fontSize: 52,
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginTop: 28,
+    marginBottom: 16,
+  },
+
+  // 「宿題を終えた！」ボタン
+  // Figma: width:204, height:71, bg:#1e3c9f, border:white
+  finishButton: {
+    backgroundColor: '#1e3c9f',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    width: SCREEN_WIDTH * 0.52,
+    height: 71,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  finishButtonText: {
+    fontSize: 20,
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+
+  // キャラクター + 宝箱 エリア
+  // Figma: left char 126×113, right char 95×128, chest centered
+  charactersArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  charLeft: {
+    width: SCREEN_WIDTH * 0.33,
+    height: SCREEN_WIDTH * 0.33 * (113 / 126),
+  },
+  chest: {
+    flex: 1,
+    height: SCREEN_WIDTH * 0.42,
+  },
+  charRight: {
+    width: SCREEN_WIDTH * 0.25,
+    height: SCREEN_WIDTH * 0.25 * (128 / 95),
+  },
+
+  // ════════════════════════════════════════
   //  カスタムモーダル共通
   // ════════════════════════════════════════
   modalOverlay: {
@@ -442,6 +813,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 99,
+  },
+
+  // ── 写真モーダル（Alerts photo.png） ──────
+  // やめる／アルバム／写真をとる の3ボタン横並びを想定
+  alertPhotoContainer: {
+    width: ALERT_PHOTO_W,
+    height: ALERT_PHOTO_H,
+  },
+  alertPhotoImage: {
+    width: ALERT_PHOTO_W,
+    height: ALERT_PHOTO_H,
+  },
+  // 「やめる」 ← 左列（0〜33%）・下部60%〜
+  photoModalCancelHitbox: {
+    position: 'absolute',
+    left: 0,
+    width: ALERT_PHOTO_W * 0.33,
+    top: ALERT_PHOTO_H * 0.55,
+    bottom: 0,
+  },
+  // 「アルバム」 ← 中列（33〜66%）・下部60%〜
+  photoModalAlbumHitbox: {
+    position: 'absolute',
+    left: ALERT_PHOTO_W * 0.33,
+    width: ALERT_PHOTO_W * 0.34,
+    top: ALERT_PHOTO_H * 0.55,
+    bottom: 0,
+  },
+  // 「写真をとる」 ← 右列（66〜100%）・下部60%〜
+  photoModalCameraHitbox: {
+    position: 'absolute',
+    left: ALERT_PHOTO_W * 0.67,
+    right: 0,
+    top: ALERT_PHOTO_H * 0.55,
+    bottom: 0,
   },
 
   // ── エラーモーダル（Alerts.png） ──────────

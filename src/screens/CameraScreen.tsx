@@ -25,6 +25,14 @@ const TABLE_WIDTH = SCREEN_WIDTH * 0.86;
 // CustomTabBar の固定高さ（CustomTabBar.tsx の TAB_BAR_HEIGHT に合わせる）
 const TAB_BAR_HEIGHT = 83;
 
+// ── モーダル画像サイズ（Figmaの比率を維持してレスポンシブ計算） ──
+// Alerts.png  Figma実寸: 363 × 110 px
+const ALERT_IMG_W = SCREEN_WIDTH * 0.92;
+const ALERT_IMG_H = ALERT_IMG_W * (110 / 363);
+// Dialog.png  Figma実寸: 312 × 128 px (概算)
+const DIALOG_IMG_W = SCREEN_WIDTH * 0.84;
+const DIALOG_IMG_H = DIALOG_IMG_W * (128 / 312);
+
 const SUBJECTS = ['国語', '数学(算数)', '理科', '社会', '英語', 'その他'] as const;
 
 export default function CameraScreen() {
@@ -32,6 +40,8 @@ export default function CameraScreen() {
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const handleSubjectSelect = (subject: string) => {
     setSelectedSubject(subject);
@@ -84,10 +94,10 @@ export default function CameraScreen() {
   // ── 登録するボタン：バリデーション ───────────────────────
   const handleRegister = () => {
     if (!photoUri || !homeworkName.trim() || !selectedSubject) {
-      Alert.alert('エラー', 'すべての項目を入力・選択してください');
+      setShowErrorModal(true);
       return;
     }
-    Alert.alert('成功！');
+    setShowSuccessModal(true);
   };
 
   return (
@@ -200,13 +210,58 @@ export default function CameraScreen() {
               activeOpacity={0.8}
               onPress={handleRegister}
             >
-              <AppText style={styles.registerButtonText}>登録する</AppText>
+              <AppText style={styles.registerButtonText}>この宿題に挑戦！</AppText>
             </TouchableOpacity>
 
             {/* タブバー（オーバーレイ）分の余白 */}
             <View style={styles.bottomPad} />
           </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* ── エラーモーダル（Alerts.png）── */}
+        {showErrorModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.alertContainer}>
+              <Image
+                source={require('../../asset/camera/images/Alerts.png')}
+                style={styles.alertImage}
+                resizeMode="contain"
+              />
+              {/* × 閉じるヒットボックス：Figma上 y≈74%・横方向中央 */}
+              <TouchableOpacity
+                style={styles.alertCloseHitbox}
+                onPress={() => setShowErrorModal(false)}
+                activeOpacity={0.7}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* ── 成功モーダル（Dialog.png）── */}
+        {showSuccessModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.dialogContainer}>
+              <Image
+                source={require('../../asset/camera/images/Dialog.png')}
+                style={styles.dialogImage}
+                resizeMode="contain"
+              />
+              {/* 「挑戦しない」ヒットボックス：左列・下部 */}
+              <TouchableOpacity
+                style={styles.dialogCancelHitbox}
+                onPress={() => setShowSuccessModal(false)}
+                activeOpacity={0.7}
+              />
+              {/* 「挑戦する！」ヒットボックス：右列・下部 */}
+              <TouchableOpacity
+                style={styles.dialogConfirmHitbox}
+                onPress={() => Alert.alert('挑戦中')}
+                activeOpacity={0.7}
+              />
+            </View>
+          </View>
+        )}
+
       </SafeAreaView>
     </ImageBackground>
   );
@@ -376,5 +431,62 @@ const styles = StyleSheet.create({
   // ---------- タブバーオーバーレイ分の余白 ----------
   bottomPad: {
     height: TAB_BAR_HEIGHT + 24,
+  },
+
+  // ════════════════════════════════════════
+  //  カスタムモーダル共通
+  // ════════════════════════════════════════
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99,
+  },
+
+  // ── エラーモーダル（Alerts.png） ──────────
+  alertContainer: {
+    width: ALERT_IMG_W,
+    height: ALERT_IMG_H,
+  },
+  alertImage: {
+    width: ALERT_IMG_W,
+    height: ALERT_IMG_H,
+  },
+  // × ボタンのヒットボックス
+  // Figma上: y ≈ 74% から底、横方向は中央寄り
+  alertCloseHitbox: {
+    position: 'absolute',
+    top: ALERT_IMG_H * 0.72,
+    left: ALERT_IMG_W * 0.33,
+    right: ALERT_IMG_W * 0.33,
+    bottom: ALERT_IMG_H * 0.04,
+  },
+
+  // ── 成功モーダル（Dialog.png） ───────────
+  dialogContainer: {
+    width: DIALOG_IMG_W,
+    height: DIALOG_IMG_H,
+  },
+  dialogImage: {
+    width: DIALOG_IMG_W,
+    height: DIALOG_IMG_H,
+  },
+  // 「挑戦しない」ヒットボックス（左半分・下部）
+  // Figma: ボタン行は下部 ~31%、左ボタンは幅の左半分
+  dialogCancelHitbox: {
+    position: 'absolute',
+    left: DIALOG_IMG_W * 0.02,
+    right: DIALOG_IMG_W * 0.52,
+    bottom: DIALOG_IMG_H * 0.03,
+    height: DIALOG_IMG_H * 0.29,
+  },
+  // 「挑戦する！」ヒットボックス（右半分・下部）
+  dialogConfirmHitbox: {
+    position: 'absolute',
+    left: DIALOG_IMG_W * 0.52,
+    right: DIALOG_IMG_W * 0.02,
+    bottom: DIALOG_IMG_H * 0.03,
+    height: DIALOG_IMG_H * 0.29,
   },
 });

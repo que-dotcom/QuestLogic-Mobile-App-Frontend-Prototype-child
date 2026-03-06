@@ -15,7 +15,6 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
  * これにより ImageBackground 自体が間延びしない。
  */
 const TAB_BAR_HEIGHT = 83;
-const TAB_BAR_BG_COLOR = '#8a5a22';
 
 const TAB_ICONS = {
   Home: require('../../asset/home/images/Home icon.png'),
@@ -97,7 +96,7 @@ export default function CustomTabBar({
 
 const styles = StyleSheet.create({
   wrapper: {
-    backgroundColor: TAB_BAR_BG_COLOR,
+    backgroundColor: 'transparent',
   },
   tabBar: {
     height: TAB_BAR_HEIGHT,
@@ -115,6 +114,6 @@ const styles = StyleSheet.create({
     height: 34,
   },
   safeAreaExtension: {
-    backgroundColor: TAB_BAR_BG_COLOR,
+    backgroundColor: 'transparent',
   },
 });

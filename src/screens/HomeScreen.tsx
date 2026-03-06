@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  ImageBackground,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
@@ -39,53 +44,62 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      {/*
-       * ScrollView を廃止し、フラットな flex column レイアウトに変更。
-       * ScrollView 内では子の flex:1 が高さゼロに折りたたまれ、
-       * MainActionArea（羊皮紙）が表示されない問題が発生していたため。
-       */}
-      <View style={styles.content}>
-        {/* A. ヘッダー（プロフィール） */}
-        <HeaderProfile title={title} userName={userName} />
+    <ImageBackground
+      source={require('../../asset/home/images/background screen.png')}
+      style={styles.screenBackground}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.content}>
+          {/* A. ヘッダー（プロフィール） */}
+          <HeaderProfile title={title} userName={userName} />
 
-        {/* B. ステータスバー（HP/MP風ゲージ） */}
-        <StatusBars level={level} />
+          {/* B. ステータスバー（HP/MP風ゲージ） */}
+          <StatusBars
+            level={level}
+            gameRatio={Math.min(gameLimitMin / 60, 1)}
+            smartphoneRatio={Math.min(smartphoneLimitMin / 60, 1)}
+            levelRatio={Math.min(level / 10, 1)}
+          />
 
-        {/* C. 制限時間・ステータス表示 */}
-        <TimeDisplay
-          gameLimitMin={gameLimitMin}
-          smartphoneLimitMin={smartphoneLimitMin}
-          level={level}
-        />
+          {/* C. 制限時間・ステータス表示 */}
+          <TimeDisplay
+            gameLimitMin={gameLimitMin}
+            smartphoneLimitMin={smartphoneLimitMin}
+            level={level}
+          />
 
-        {/* D. メインエリア（地図/羊皮紙）— flex:1 で残り全高を占有 */}
-        <MainActionArea
-          hasHomework={hasHomework}
-          homeworkList={homeworkList}
-          onRegisterPress={handleRegisterPress}
-        />
+          {/* D. メインエリア（地図/羊皮紙）— flex:1 で残り全高を占有 */}
+          <MainActionArea
+            hasHomework={hasHomework}
+            homeworkList={homeworkList}
+            onRegisterPress={handleRegisterPress}
+          />
 
-        {/* 開発用: 宿題登録状態の切り替えボタン */}
-        {__DEV__ && (
-          <TouchableOpacity
-            style={styles.devToggle}
-            onPress={() => setHasHomework((prev) => !prev)}
-          >
-            <AppText style={styles.devToggleText}>
-              [DEV] 宿題状態: {hasHomework ? 'あり' : 'なし'}
-            </AppText>
-          </TouchableOpacity>
-        )}
-      </View>
-    </SafeAreaView>
+          {/* 開発用: 宿題登録状態の切り替えボタン */}
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.devToggle}
+              onPress={() => setHasHomework((prev) => !prev)}
+            >
+              <AppText style={styles.devToggleText}>
+                [DEV] 宿題状態: {hasHomework ? 'あり' : 'なし'}
+              </AppText>
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  screenBackground: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: '#0a0a14',
+    backgroundColor: 'transparent',
   },
   content: {
     flex: 1,

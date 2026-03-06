@@ -97,6 +97,12 @@ export default function CustomTabBar({
 const styles = StyleSheet.create({
   wrapper: {
     backgroundColor: 'transparent',
+    // 画面最下部にオーバーレイ配置することで、
+    // 各スクリーンの ImageBackground がタブバーの裏まで全面描画される
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   tabBar: {
     height: TAB_BAR_HEIGHT,

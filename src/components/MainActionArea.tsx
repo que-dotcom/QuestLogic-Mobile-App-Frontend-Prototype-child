@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   View,
+  Image,
   ImageBackground,
   TouchableOpacity,
   StyleSheet,
@@ -50,17 +51,21 @@ export default function MainActionArea({
             ))}
           </View>
         ) : (
-          /* デフォルト: 登録促進テキスト + 登録ボタン */
+          /* デフォルト: チャレンジ促進テキスト + 登録ボタン */
           <View style={styles.defaultContainer}>
+            <AppText style={styles.challengeText}>let's challenge!</AppText>
             <AppText style={styles.promptText}>
               {'宿題を登録して\n取り組もう！'}
             </AppText>
             <TouchableOpacity
-              style={styles.registerButton}
               onPress={onRegisterPress}
-              activeOpacity={0.8}
+              activeOpacity={0.75}
             >
-              <AppText style={styles.registerButtonText}>登録する</AppText>
+              <Image
+                source={require('../../asset/home/images/Button S2.png')}
+                style={styles.registerButtonImage}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -89,25 +94,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
   },
+  challengeText: {
+    fontSize: 18,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
   promptText: {
     fontSize: 22,
-    /*
-     * 羊皮紙（薄色背景）の上のテキストは黒にする。
-     * 前回の暗い赤では羊皮紙上で見えなかった。
-     */
     color: '#000000',
     textAlign: 'center',
     lineHeight: 40,
   },
-  registerButton: {
-    backgroundColor: '#2255cc',
-    paddingVertical: 12,
-    paddingHorizontal: 52,
-    borderRadius: 2,
-  },
-  registerButtonText: {
-    fontSize: 16,
-    color: '#ffffff',
+  registerButtonImage: {
+    width: 205,
+    height: 57,
   },
   /* --- 宿題登録後状態 --- */
   homeworkContainer: {

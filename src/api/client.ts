@@ -3,10 +3,10 @@ import { getToken } from "../utils/tokenStorage";
 
 // ベースURL: 環境変数 EXPO_PUBLIC_API_BASE_URL に /api を付与
 // .env 例: EXPO_PUBLIC_API_BASE_URL=https://QL-api.adcsvmc.net
-const BASE_URL = `${process.env.EXPO_PUBLIC_API_BASE_URL ?? ""}/api`;
+const baseURL = `${process.env.EXPO_PUBLIC_API_BASE_URL || "https://QL-api.adcsvmc.net"}/api`;
 
 export const apiClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL,
   headers: {
     "Content-Type": "application/json",
   },

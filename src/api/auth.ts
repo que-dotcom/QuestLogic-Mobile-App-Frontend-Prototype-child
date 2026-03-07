@@ -1,10 +1,10 @@
 import { apiClient } from "./client";
 import type { LoginResponse, GoogleAuthRequest } from "../types/api";
 
-// Basic認証情報（開発用）
-const BASIC_AUTH_ID = "admin";
-const BASIC_AUTH_PW = "Quest2404";
-const basicAuthHeader = `Basic ${btoa(`${BASIC_AUTH_ID}:${BASIC_AUTH_PW}`)}`;
+// Basic認証ヘッダー（開発用）
+// "admin:Quest2404" を Base64 エンコードした固定文字列
+// React Native では btoa が使えない環境があるため、固定値を直接使用する
+const BASIC_AUTH_HEADER = "Basic YWRtaW46UXVlc3QyNDA0";
 
 /**
  * GET /api/test/login/:role
@@ -14,14 +14,11 @@ const basicAuthHeader = `Basic ${btoa(`${BASIC_AUTH_ID}:${BASIC_AUTH_PW}`)}`;
 export const testLogin = async (
   role: "child" | "parent"
 ): Promise<LoginResponse> => {
-  const response = await apiClient.get<LoginResponse>(
-    `/test/login/${role}`,
-    {
-      headers: {
-        Authorization: basicAuthHeader,
-      },
-    }
-  );
+  const response = await apiClient.get<LoginResponse>(`/test/login/${role}`, {
+    headers: {
+      Authorization: BASIC_AUTH_HEADER,
+    },
+  });
   return response.data;
 };
 

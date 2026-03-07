@@ -9,6 +9,7 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
 import { getTitleByExp } from '../utils/titleHelper';
 import { useHomework } from '../context/HomeworkContext';
+import { useAuth } from '../context/AuthContext';
 import HeaderProfile from '../components/HeaderProfile';
 import StatusBars from '../components/StatusBars';
 import MainActionArea from '../components/MainActionArea';
@@ -23,13 +24,16 @@ interface PlayerStatus {
 }
 
 export default function HomeScreen({ navigation }: Props) {
+  const { user } = useAuth();
+
+  const userName = user?.name || 'ゲスト';
+  const exp = user?.exp || 0;
+
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>({
     gameTime: 60,
     smartphoneTime: 60,
-    level: 1,
+    level: user?.level || 1,
   });
-  const [exp] = useState(3000);
-  const [userName] = useState('匿名さん');
 
   const title = getTitleByExp(exp);
   const { homework } = useHomework();

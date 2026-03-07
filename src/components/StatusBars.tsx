@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginTop: 4,
     backgroundColor: 'transparent',
+    alignItems: 'flex-start',
   },
   statusBarWrapper: {
     width: '100%',

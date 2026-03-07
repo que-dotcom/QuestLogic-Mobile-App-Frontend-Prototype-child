@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Image,
   ImageBackground,
   TouchableOpacity,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import AppText from './AppText';
 import type { HomeworkInfo } from '../context/HomeworkContext';
@@ -37,10 +38,45 @@ function getSubjectColor(subject: string): string {
  */
 const MAP_ASPECT_RATIO = 394 / 306;
 
+/**
+ * 「let's challenge!」の文字色を赤→ピンク→オレンジ→黄→緑→青→紫→赤の順に
+ * 約7秒かけてループするミュートカラーアニメーション。
+ * color は useNativeDriver 非対応のため JS スレッドで動かす。
+ */
+const CHALLENGE_COLORS = [
+  '#b33939', // 赤
+  '#cc5e84', // ピンク
+  '#cd6133', // オレンジ
+  '#cca72b', // 黄
+  '#218c74', // 緑
+  '#227093', // 青
+  '#40407a', // 紫
+  '#b33939', // 赤（ループ折り返し）
+];
+
 export default function MainActionArea({
   homework,
   onRegisterPress,
 }: MainActionAreaProps) {
+  const colorAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(colorAnim, {
+        toValue: CHALLENGE_COLORS.length - 1,
+        duration: 7000,
+        useNativeDriver: false,
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  const animatedColor = colorAnim.interpolate({
+    inputRange: CHALLENGE_COLORS.map((_, i) => i),
+    outputRange: CHALLENGE_COLORS,
+  });
+
   return (
     <View style={styles.outerContainer}>
       <ImageBackground
@@ -63,7 +99,11 @@ export default function MainActionArea({
         ) : (
           /* デフォルト: チャレンジ促進テキスト + 登録ボタン */
           <View style={styles.defaultContainer}>
-            <AppText style={styles.challengeText}>let's challenge!</AppText>
+            <Animated.Text
+              style={[styles.challengeText, { color: animatedColor }]}
+            >
+              let's challenge!
+            </Animated.Text>
             <AppText style={styles.promptText}>
               {'宿題を登録して\n取り組もう！'}
             </AppText>
@@ -103,8 +143,9 @@ const styles = StyleSheet.create({
   },
   challengeText: {
     fontSize: 18,
-    color: '#ffffff',
+    color: '#b33939',
     textAlign: 'center',
+    fontFamily: 'DotGothic16_400Regular',
   },
   promptText: {
     fontSize: 22,

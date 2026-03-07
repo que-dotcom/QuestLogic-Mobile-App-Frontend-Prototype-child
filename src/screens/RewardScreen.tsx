@@ -289,12 +289,13 @@ export default function RewardScreen() {
               onPress={handleCloseAdvice}
               activeOpacity={0.8}
             >
-              <Image
+              <ImageBackground
                 source={require('../../asset/reward/images/Button W.png')}
-                style={styles.adviceBackBtnImage}
+                style={styles.adviceBackBtnBg}
                 resizeMode="stretch"
-              />
-              <AppText style={styles.adviceBackBtnText}>戻る ＞</AppText>
+              >
+                <AppText style={styles.adviceBackBtnText}>戻る ＞</AppText>
+              </ImageBackground>
             </TouchableOpacity>
           </View>
 
@@ -535,16 +536,12 @@ const styles = StyleSheet.create({
     zIndex: 10,
     width: 99,
     height: 33,
+  },
+  // ImageBackground がボタン画像を描画し、子の AppText をオーバーレイ
+  adviceBackBtnBg: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // Button W.png を明示的な寸法で配置（absoluteFillObject では枠線がズレるため個別指定）
-  adviceBackBtnImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 99,
-    height: 33,
   },
   adviceBackBtnText: {
     fontSize: 16,

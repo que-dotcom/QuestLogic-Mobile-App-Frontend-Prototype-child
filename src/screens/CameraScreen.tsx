@@ -386,8 +386,10 @@ export default function CameraScreen() {
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
               onPress={() => {
-                setHasNewAdvice(true);
-                setOpenAdviceDirectly(true);
+                if (!isBackendError) {
+                  setHasNewAdvice(true);
+                  setOpenAdviceDirectly(true);
+                }
                 setHomework(null);
                 resetCameraScreen();
                 navigation.navigate('Reward');
@@ -409,7 +411,9 @@ export default function CameraScreen() {
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
               onPress={() => {
-                setHasNewAdvice(true);
+                if (!isBackendError) {
+                  setHasNewAdvice(true);
+                }
                 setHomework(null);
                 resetCameraScreen();
                 navigation.navigate('Home');
@@ -1151,17 +1155,20 @@ const styles = StyleSheet.create({
   },
 
   // キャラクター + 宝箱 エリア
-  // Figma: left char 126×113, right char 95×128, chest centered
+  // タイマーとフィニッシュボタンのちょうど中間あたりの高さに絶対配置する。
+  // challengeWrapper（flex:1）を基準に top を指定。
   charactersArea: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '25%',
     flexDirection: 'row',
     alignItems: 'flex-end',
-    width: '100%',
     paddingHorizontal: 4,
   },
   charLeft: {
     width: SCREEN_WIDTH * 0.33,
-    height: SCREEN_WIDTH * 0.33 * (113 / 126),
+    height: SCREEN_WIDTH * 1.1 * (113 / 126),
   },
   chest: {
     flex: 1,
@@ -1169,7 +1176,7 @@ const styles = StyleSheet.create({
   },
   charRight: {
     width: SCREEN_WIDTH * 0.25,
-    height: SCREEN_WIDTH * 0.25 * (128 / 95),
+    height: SCREEN_WIDTH * 0.8 * (128 / 95),
   },
 
   // ════════════════════════════════════════

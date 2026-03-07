@@ -9,6 +9,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { HomeworkProvider } from './src/context/HomeworkContext';
+import { AdviceProvider } from './src/context/AdviceContext';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -26,10 +27,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <HomeworkProvider>
-        <NavigationContainer>
-          <StatusBar style="light" backgroundColor="#0a0a14" />
-          <AppNavigator />
-        </NavigationContainer>
+        <AdviceProvider>
+          <NavigationContainer>
+            <StatusBar style="light" backgroundColor="#0a0a14" />
+            <AppNavigator />
+          </NavigationContainer>
+        </AdviceProvider>
       </HomeworkProvider>
     </SafeAreaProvider>
   );

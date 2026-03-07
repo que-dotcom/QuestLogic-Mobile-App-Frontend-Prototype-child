@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AppText from '../components/AppText';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useHomework } from '../context/HomeworkContext';
+import { useAdvice } from '../context/AdviceContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -87,6 +88,7 @@ const GRADE = '中学1年生';
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const { setHomework } = useHomework();
+  const { setHasNewAdvice, setOpenAdviceDirectly } = useAdvice();
 
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -383,7 +385,13 @@ export default function CameraScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
-              onPress={() => { setHomework(null); resetCameraScreen(); navigation.navigate('Reward'); }}
+              onPress={() => {
+                setHasNewAdvice(true);
+                setOpenAdviceDirectly(true);
+                setHomework(null);
+                resetCameraScreen();
+                navigation.navigate('Reward');
+              }}
             >
               <Image
                 source={
@@ -400,7 +408,12 @@ export default function CameraScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
-              onPress={() => { setHomework(null); resetCameraScreen(); navigation.navigate('Home'); }}
+              onPress={() => {
+                setHasNewAdvice(true);
+                setHomework(null);
+                resetCameraScreen();
+                navigation.navigate('Home');
+              }}
             >
               <Image
                 source={require('../../asset/camera/images/Button S.png')}

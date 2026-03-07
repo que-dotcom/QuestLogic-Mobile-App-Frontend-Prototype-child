@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ColoredTitle from '../components/ColoredTitle';
 import GoogleLoginButton from '../components/GoogleLoginButton';
@@ -35,8 +35,52 @@ export default function LoginScreen({ onLogin }: Props) {
           <GoogleLoginButton onPress={handleGoogleLogin} />
         </View>
 
-        {/* 将来的にフッターのドット絵などを配置するための余白 */}
-        <View style={styles.bottomSpacer} />
+        {/* 下部のドット絵装飾エリア */}
+        <View style={styles.bottomSpacer}>
+          {/* 左側のタイル群
+              下段: 2087, 2088, 2089 を横並び
+              上段: 2082 を 2088 のやや 2087 側に寄せて配置
+           */}
+          <View style={styles.bottomColumnLeft}>
+            <View style={styles.bottomAboveRow}>
+              <Image
+                source={require('../../asset/login/images/Rectangle 2082.png')}
+                style={styles.bottomImage}
+              />
+            </View>
+            <View style={styles.bottomLeftRow}>
+              <Image
+                source={require('../../asset/login/images/Rectangle 2087.png')}
+                style={styles.bottomImage}
+              />
+              <Image
+                source={require('../../asset/login/images/Rectangle 2088.png')}
+                style={styles.bottomImage}
+              />
+              <Image
+                source={require('../../asset/login/images/Rectangle 2089.png')}
+                style={styles.bottomImage}
+              />
+            </View>
+          </View>
+
+          {/* 右側のタイル群（2 段構成。3 段目は中央左へ移動済み） */}
+          <View style={styles.bottomColumnRight}>
+            {/* Rectangle 2031 の下に Rectangle 2071 が来るように縦に配置 */}
+            <View style={styles.bottomRowRight}>
+              <Image
+                source={require('../../asset/login/images/Rectangle 2031.png')}
+                style={styles.bottomImage}
+              />
+            </View>
+            <View style={styles.bottomRowRight}>
+              <Image
+                source={require('../../asset/login/images/Rectangle 2071.png')}
+                style={styles.bottomImage}
+              />
+            </View>
+          </View>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -60,9 +104,44 @@ const styles = StyleSheet.create({
   buttonArea: {
     flex: 1,
     justifyContent: 'center',
+    position: 'relative',
+    zIndex: 2,
   },
   bottomSpacer: {
+    height: 140,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  bottomColumnLeft: {
+    flexDirection: 'column',
+  },
+  bottomColumnRight: {
+    flexDirection: 'column',
+    // 画面下端からおよそ 100px 分持ち上げる
+    marginBottom: 100,
+  },
+  bottomRowRight: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  bottomImage: {
+    width: 80,
     height: 80,
+    resizeMode: 'contain',
+  },
+  bottomLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  bottomAboveRow: {
+    flexDirection: 'row',
+    // 2087・2088 のちょうど上にくっついて見えるように、
+    // わずかに下方向へ重ねる
+    marginLeft: 70,
+    marginBottom: -8,
   },
 });
 

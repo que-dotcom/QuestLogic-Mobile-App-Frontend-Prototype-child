@@ -19,6 +19,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import AppText from '../components/AppText';
 import { RootTabParamList } from '../navigation/AppNavigator';
+import { useHomework } from '../context/HomeworkContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -80,8 +81,12 @@ const renderStars = (score10: number): string => {
   return '★'.repeat(filled) + '☆'.repeat(5 - filled);
 };
 
+// 学年は現状ハードコード。将来はユーザー情報から取得する
+const GRADE = '中学1年生';
+
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
+  const { setHomework } = useHomework();
 
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -378,7 +383,7 @@ export default function CameraScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
-              onPress={() => { resetCameraScreen(); navigation.navigate('Reward'); }}
+              onPress={() => { setHomework(null); resetCameraScreen(); navigation.navigate('Reward'); }}
             >
               <Image
                 source={
@@ -395,7 +400,7 @@ export default function CameraScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.resultButtonWrap}
-              onPress={() => { resetCameraScreen(); navigation.navigate('Home'); }}
+              onPress={() => { setHomework(null); resetCameraScreen(); navigation.navigate('Home'); }}
             >
               <Image
                 source={require('../../asset/camera/images/Button S.png')}
@@ -692,6 +697,12 @@ export default function CameraScreen() {
               <TouchableOpacity
                 style={styles.dialogConfirmHitbox}
                 onPress={() => {
+                  // ホーム画面に宿題情報を反映（Contextを更新）
+                  setHomework({
+                    grade: GRADE,
+                    subject: selectedSubject ?? '',
+                    name: homeworkName,
+                  });
                   setShowSuccessModal(false);
                   setSecondsElapsed(0);
                   setIsChallenging(true);

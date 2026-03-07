@@ -7,48 +7,58 @@ import {
   StyleSheet,
 } from 'react-native';
 import AppText from './AppText';
-
-interface Homework {
-  id: string;
-  label: string;
-}
+import type { HomeworkInfo } from '../context/HomeworkContext';
 
 interface MainActionAreaProps {
-  hasHomework: boolean;
-  homeworkList: Homework[];
+  homework: HomeworkInfo | null;
   onRegisterPress: () => void;
 }
 
+/**
+ * 教科ごとの表示カラー定義。
+ * CameraScreen の SUBJECTS 定義 ['国語','数学(算数)','理科','社会','英語','その他'] に対応。
+ */
+const SUBJECT_COLORS: Record<string, string> = {
+  '国語':      '#FF3B30',
+  '数学(算数)': '#007AFF',
+  '英語':      '#FF69B4',
+  '社会':      '#DAA520',
+  '理科':      '#34C759',
+  'その他':    '#8E8E93',
+};
+
+function getSubjectColor(subject: string): string {
+  return SUBJECT_COLORS[subject] ?? '#8E8E93';
+}
+
+/**
+ * Figma: Group 387 (Map エリア) width=394, height=305
+ * この比率を ImageBackground に指定して縦方向への間延びを防ぐ。
+ */
+const MAP_ASPECT_RATIO = 394 / 306;
+
 export default function MainActionArea({
-  hasHomework,
-  homeworkList,
+  homework,
   onRegisterPress,
 }: MainActionAreaProps) {
   return (
-    /*
-     * 外側 View が flex:1 で残り全高を占有する。
-     * ScrollView 廃止により flex:1 が正常に機能する。
-     * marginHorizontal で左右の余白を確保。
-     */
     <View style={styles.outerContainer}>
       <ImageBackground
         source={require('../../asset/home/images/Map icon.png')}
         style={styles.mapBackground}
-        /*
-         * "cover": コンテナ全体を羊皮紙画像で埋める。
-         * "stretch" は比率が崩れる。"contain" は余白が出る。
-         * "cover" が最もデザイン意図に近い。
-         */
-        resizeMode="cover"
+        resizeMode="stretch"
       >
-        {hasHomework ? (
-          /* 宿題登録後: 宿題リスト表示 */
+        {homework ? (
+          /* 宿題登録後: 「{学年}{教科}：{宿題名}」を教科色で表示 */
           <View style={styles.homeworkContainer}>
-            {homeworkList.map((hw) => (
-              <AppText key={hw.id} style={styles.homeworkItem}>
-                {hw.label}
-              </AppText>
-            ))}
+            <AppText
+              style={[
+                styles.homeworkText,
+                { color: getSubjectColor(homework.subject) },
+              ]}
+            >
+              {`${homework.grade}${homework.subject}：${homework.name}`}
+            </AppText>
           </View>
         ) : (
           /* デフォルト: チャレンジ促進テキスト + 登録ボタン */
@@ -57,10 +67,7 @@ export default function MainActionArea({
             <AppText style={styles.promptText}>
               {'宿題を登録して\n取り組もう！'}
             </AppText>
-            <TouchableOpacity
-              onPress={onRegisterPress}
-              activeOpacity={0.75}
-            >
+            <TouchableOpacity onPress={onRegisterPress} activeOpacity={0.75}>
               <Image
                 source={require('../../asset/home/images/Button S2.png')}
                 style={styles.registerButtonImage}
@@ -76,13 +83,13 @@ export default function MainActionArea({
 
 const styles = StyleSheet.create({
   outerContainer: {
-    flex: 1,
     marginHorizontal: 8,
     marginTop: 8,
     marginBottom: 8,
   },
   mapBackground: {
-    flex: 1,
+    width: '100%',
+    aspectRatio: MAP_ASPECT_RATIO,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -111,14 +118,15 @@ const styles = StyleSheet.create({
   },
   /* --- 宿題登録後状態 --- */
   homeworkContainer: {
+    flex: 1,
     width: '100%',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    gap: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
-  homeworkItem: {
-    fontSize: 18,
-    color: '#000000',
+  homeworkText: {
+    fontSize: 20,
     textAlign: 'center',
+    lineHeight: 36,
   },
 });

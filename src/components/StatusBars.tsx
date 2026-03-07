@@ -93,10 +93,12 @@ const styles = StyleSheet.create({
   },
   levelBadge: {
     position: 'absolute',
-    left: 0,
+    // Figma: Lv.1 テキスト中心 x ≈ 127.93 / 325px = ~39% の位置に合わせる
+    // left: 22% + width: 34% の中心 = 39%
+    left: '5%',
+    width: '34%',
     top: 0,
     bottom: 0,
-    width: '28%',
     alignItems: 'center',
     justifyContent: 'center',
   },

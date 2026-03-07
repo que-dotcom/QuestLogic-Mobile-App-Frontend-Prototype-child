@@ -13,6 +13,10 @@
         "backgroundColor": "#0a0a14"
       }
     },
-    "web": {}
+    "web": {},
+    "plugins": [
+      "expo-font",
+      "expo-secure-store"
+    ]
   }
 }

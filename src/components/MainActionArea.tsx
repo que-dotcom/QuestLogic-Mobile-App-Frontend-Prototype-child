@@ -1,66 +1,118 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
+  Image,
   ImageBackground,
   TouchableOpacity,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import AppText from './AppText';
-
-interface Homework {
-  id: string;
-  label: string;
-}
+import type { HomeworkInfo } from '../context/HomeworkContext';
 
 interface MainActionAreaProps {
-  hasHomework: boolean;
-  homeworkList: Homework[];
+  homework: HomeworkInfo | null;
   onRegisterPress: () => void;
 }
 
+/**
+ * 教科ごとの表示カラー定義。
+ * CameraScreen の SUBJECTS 定義 ['国語','数学(算数)','理科','社会','英語','その他'] に対応。
+ */
+const SUBJECT_COLORS: Record<string, string> = {
+  '国語':      '#FF3B30',
+  '数学(算数)': '#007AFF',
+  '英語':      '#FF69B4',
+  '社会':      '#DAA520',
+  '理科':      '#34C759',
+  'その他':    '#8E8E93',
+};
+
+function getSubjectColor(subject: string): string {
+  return SUBJECT_COLORS[subject] ?? '#8E8E93';
+}
+
+/**
+ * Figma: Group 387 (Map エリア) width=394, height=305
+ * この比率を ImageBackground に指定して縦方向への間延びを防ぐ。
+ */
+const MAP_ASPECT_RATIO = 394 / 306;
+
+/**
+ * 「let's challenge!」の文字色を赤→ピンク→オレンジ→黄→緑→青→紫→赤の順に
+ * 約7秒かけてループするミュートカラーアニメーション。
+ * color は useNativeDriver 非対応のため JS スレッドで動かす。
+ */
+const CHALLENGE_COLORS = [
+  '#b33939', // 赤
+  '#cc5e84', // ピンク
+  '#cd6133', // オレンジ
+  '#cca72b', // 黄
+  '#218c74', // 緑
+  '#227093', // 青
+  '#40407a', // 紫
+  '#b33939', // 赤（ループ折り返し）
+];
+
 export default function MainActionArea({
-  hasHomework,
-  homeworkList,
+  homework,
   onRegisterPress,
 }: MainActionAreaProps) {
+  const colorAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(colorAnim, {
+        toValue: CHALLENGE_COLORS.length - 1,
+        duration: 7000,
+        useNativeDriver: false,
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  const animatedColor = colorAnim.interpolate({
+    inputRange: CHALLENGE_COLORS.map((_, i) => i),
+    outputRange: CHALLENGE_COLORS,
+  });
+
   return (
-    /*
-     * 外側 View が flex:1 で残り全高を占有する。
-     * ScrollView 廃止により flex:1 が正常に機能する。
-     * marginHorizontal で左右の余白を確保。
-     */
     <View style={styles.outerContainer}>
       <ImageBackground
         source={require('../../asset/home/images/Map icon.png')}
         style={styles.mapBackground}
-        /*
-         * "cover": コンテナ全体を羊皮紙画像で埋める。
-         * "stretch" は比率が崩れる。"contain" は余白が出る。
-         * "cover" が最もデザイン意図に近い。
-         */
-        resizeMode="cover"
+        resizeMode="stretch"
       >
-        {hasHomework ? (
-          /* 宿題登録後: 宿題リスト表示 */
+        {homework ? (
+          /* 宿題登録後: 「{学年}{教科}：{宿題名}」を教科色で表示 */
           <View style={styles.homeworkContainer}>
-            {homeworkList.map((hw) => (
-              <AppText key={hw.id} style={styles.homeworkItem}>
-                {hw.label}
-              </AppText>
-            ))}
+            <AppText
+              style={[
+                styles.homeworkText,
+                { color: getSubjectColor(homework.subject) },
+              ]}
+            >
+              {`${homework.grade}${homework.subject}：${homework.name}`}
+            </AppText>
           </View>
         ) : (
-          /* デフォルト: 登録促進テキスト + 登録ボタン */
+          /* デフォルト: チャレンジ促進テキスト + 登録ボタン */
           <View style={styles.defaultContainer}>
+            <Animated.Text
+              style={[styles.challengeText, { color: animatedColor }]}
+            >
+              let's challenge!
+            </Animated.Text>
             <AppText style={styles.promptText}>
               {'宿題を登録して\n取り組もう！'}
             </AppText>
-            <TouchableOpacity
-              style={styles.registerButton}
-              onPress={onRegisterPress}
-              activeOpacity={0.8}
-            >
-              <AppText style={styles.registerButtonText}>登録する</AppText>
+            <TouchableOpacity onPress={onRegisterPress} activeOpacity={0.75}>
+              <Image
+                source={require('../../asset/home/images/Button S2.png')}
+                style={styles.registerButtonImage}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -71,13 +123,13 @@ export default function MainActionArea({
 
 const styles = StyleSheet.create({
   outerContainer: {
-    flex: 1,
     marginHorizontal: 8,
     marginTop: 8,
     marginBottom: 8,
   },
   mapBackground: {
-    flex: 1,
+    width: '100%',
+    aspectRatio: MAP_ASPECT_RATIO,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -89,36 +141,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
   },
+  challengeText: {
+    fontSize: 18,
+    color: '#b33939',
+    textAlign: 'center',
+    fontFamily: 'DotGothic16_400Regular',
+  },
   promptText: {
     fontSize: 22,
-    /*
-     * 羊皮紙（薄色背景）の上のテキストは黒にする。
-     * 前回の暗い赤では羊皮紙上で見えなかった。
-     */
     color: '#000000',
     textAlign: 'center',
     lineHeight: 40,
   },
-  registerButton: {
-    backgroundColor: '#2255cc',
-    paddingVertical: 12,
-    paddingHorizontal: 52,
-    borderRadius: 2,
-  },
-  registerButtonText: {
-    fontSize: 16,
-    color: '#ffffff',
+  registerButtonImage: {
+    width: 205,
+    height: 57,
   },
   /* --- 宿題登録後状態 --- */
   homeworkContainer: {
+    flex: 1,
     width: '100%',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    gap: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
-  homeworkItem: {
-    fontSize: 18,
-    color: '#000000',
+  homeworkText: {
+    fontSize: 20,
     textAlign: 'center',
+    lineHeight: 36,
   },
 });

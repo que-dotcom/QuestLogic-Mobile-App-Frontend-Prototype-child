@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  TouchableOpacity,
   StyleSheet,
   ImageBackground,
 } from 'react-native';
@@ -9,35 +8,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
 import { getTitleByExp } from '../utils/titleHelper';
-import AppText from '../components/AppText';
+import { useHomework } from '../context/HomeworkContext';
 import HeaderProfile from '../components/HeaderProfile';
 import StatusBars from '../components/StatusBars';
-import TimeDisplay from '../components/TimeDisplay';
 import MainActionArea from '../components/MainActionArea';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
-interface Homework {
-  id: string;
-  label: string;
+/** プレイヤーのステータス値。将来はバックエンドから取得してこの状態を更新する。 */
+interface PlayerStatus {
+  gameTime: number;
+  smartphoneTime: number;
+  level: number;
 }
 
-const INITIAL_HOMEWORK: Homework[] = [
-  { id: '1', label: '中1数学：文字と式' },
-  { id: '2', label: '小6国語：漢字ドリル' },
-  { id: '3', label: '中1歴史：歴史' },
-];
-
 export default function HomeScreen({ navigation }: Props) {
-  const [hasHomework, setHasHomework] = useState(false);
-  const [gameLimitMin] = useState(60);
-  const [smartphoneLimitMin] = useState(60);
-  const [level] = useState(1);
+  const [playerStatus, setPlayerStatus] = useState<PlayerStatus>({
+    gameTime: 60,
+    smartphoneTime: 60,
+    level: 1,
+  });
   const [exp] = useState(3000);
   const [userName] = useState('匿名さん');
-  const [homeworkList] = useState<Homework[]>(INITIAL_HOMEWORK);
 
   const title = getTitleByExp(exp);
+  const { homework } = useHomework();
 
   const handleRegisterPress = () => {
     navigation.navigate('Camera');
@@ -54,39 +49,18 @@ export default function HomeScreen({ navigation }: Props) {
           {/* A. ヘッダー（プロフィール） */}
           <HeaderProfile title={title} userName={userName} />
 
-          {/* B. ステータスバー（HP/MP風ゲージ） */}
+          {/* B. ステータスバー + バー画像ラベル */}
           <StatusBars
-            level={level}
-            gameRatio={Math.min(gameLimitMin / 60, 1)}
-            smartphoneRatio={Math.min(smartphoneLimitMin / 60, 1)}
-            levelRatio={Math.min(level / 10, 1)}
+            level={playerStatus.level}
+            gameLimitMin={playerStatus.gameTime}
+            smartphoneLimitMin={playerStatus.smartphoneTime}
           />
 
-          {/* C. 制限時間・ステータス表示 */}
-          <TimeDisplay
-            gameLimitMin={gameLimitMin}
-            smartphoneLimitMin={smartphoneLimitMin}
-            level={level}
-          />
-
-          {/* D. メインエリア（地図/羊皮紙）— flex:1 で残り全高を占有 */}
+          {/* C. メインエリア（地図/羊皮紙） */}
           <MainActionArea
-            hasHomework={hasHomework}
-            homeworkList={homeworkList}
+            homework={homework}
             onRegisterPress={handleRegisterPress}
           />
-
-          {/* 開発用: 宿題登録状態の切り替えボタン */}
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.devToggle}
-              onPress={() => setHasHomework((prev) => !prev)}
-            >
-              <AppText style={styles.devToggleText}>
-                [DEV] 宿題状態: {hasHomework ? 'あり' : 'なし'}
-              </AppText>
-            </TouchableOpacity>
-          )}
         </View>
       </SafeAreaView>
     </ImageBackground>
@@ -103,17 +77,5 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  devToggle: {
-    alignSelf: 'center',
-    marginBottom: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    backgroundColor: '#333344',
-    borderRadius: 4,
-  },
-  devToggleText: {
-    fontSize: 11,
-    color: '#aaaacc',
   },
 });

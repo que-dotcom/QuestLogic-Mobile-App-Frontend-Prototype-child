@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Image, ImageBackground, StyleSheet } from 'react-native';
 import AppText from './AppText';
 
 interface HeaderProfileProps {
@@ -7,14 +7,21 @@ interface HeaderProfileProps {
   userName: string;
 }
 
+/**
+ * Figma: Group 352, x=-5, y=4, width=382, height=111
+ * cha bar.png をヘッダー全体の背景として使用。
+ * aspectRatio (382/111 ≈ 3.44) で端末サイズに関わらず縦横比を維持。
+ */
+const CHA_BAR_ASPECT_RATIO = 382 / 111;
+
 export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
   return (
-    /*
-     * Figma: Group 352, x=-5, y=4, width=382, height=111
-     * 横方向ほぼフル幅。左右 marginHorizontal: 6 で端に合わせる。
-     */
-    <View style={styles.container}>
-      {/* キャラクター枠（左側） */}
+    <ImageBackground
+      source={require('../../asset/home/images/cha bar.png')}
+      style={styles.container}
+      resizeMode="stretch"
+    >
+      {/* キャラクター画像（左側） */}
       <View style={styles.characterFrame}>
         <Image
           source={require('../../asset/home/images/Default Character.png')}
@@ -28,39 +35,32 @@ export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
         <AppText style={styles.titleText}>{title}</AppText>
         <AppText style={styles.nameText}>{userName}</AppText>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
     marginHorizontal: 6,
     marginTop: 6,
-    borderWidth: 3,
-    borderColor: '#4a4a6a',
-    backgroundColor: '#0d0d20',
-    minHeight: 90,
+    aspectRatio: CHA_BAR_ASPECT_RATIO,
   },
   characterFrame: {
-    width: 70,
-    borderRightWidth: 3,
-    borderRightColor: '#4a4a6a',
-    backgroundColor: '#10102a',
+    width: '20%',
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    marginLeft: '2%',
   },
   characterImage: {
-    width: 54,
-    height: 68,
+    width: '85%',
+    height: '85%',
   },
   infoContainer: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: '4%',
     justifyContent: 'center',
     gap: 4,
   },

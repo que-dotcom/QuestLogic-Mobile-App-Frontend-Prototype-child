@@ -21,6 +21,9 @@ import AppText from '../components/AppText';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useHomework } from '../context/HomeworkContext';
 import { useAdvice } from '../context/AdviceContext';
+import { submitQuest } from '../api/quests';
+import { getApiErrorMessage } from '../api/client';
+import type { SubmitQuestResponse } from '../types/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -63,23 +66,31 @@ const BUTTON_S_H = BUTTON_S_W * (44 / 175);
 const BUTTON_M_W = SCREEN_WIDTH * 0.74;
 const BUTTON_M_H = BUTTON_M_W * (96 / 291);
 
-// ── バックエンドから受け取る予定のレスポンス形式（モック）
-// TODO: 実際の通信実装時はここをAPIレスポンスに差し替える
-const mockBackendResponse = {
-  summary: 'プリントの問題を自ら...',
-  score_breakdown: { volume: 8, process: 7, carefulness: 9, review: 1 },
-  total_score: 75,
-  features: [] as string[],
-  suspicion_flag: true,
-  suspicion_reason: '問4の選択肢が...',
-  feedback_to_child: '問題を全部書き写して...',
-  feedback_to_parent: '問題文の書き写しから...',
-};
 
 // ── 10点満点のスコアを5段階の星文字列に変換（切り捨て）──
 const renderStars = (score10: number): string => {
   const filled = Math.floor(score10 / 2);
   return '★'.repeat(filled) + '☆'.repeat(5 - filled);
+};
+
+const getUploadMimeType = (uri: string): string => {
+  const normalizedUri = uri.toLowerCase();
+
+  if (normalizedUri.endsWith('.png')) return 'image/png';
+  if (normalizedUri.endsWith('.heic')) return 'image/heic';
+  if (normalizedUri.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+};
+
+const buildUploadImage = (uri: string, fallbackName: string) => {
+  const sanitizedUri = uri.split('?')[0];
+  const fileName = sanitizedUri.split('/').pop() || fallbackName;
+
+  return {
+    uri,
+    name: fileName,
+    type: getUploadMimeType(fileName),
+  };
 };
 
 // 学年は現状ハードコード。将来はユーザー情報から取得する
@@ -105,6 +116,8 @@ export default function CameraScreen() {
   const [isScoring, setIsScoring] = useState(false);
   const [isResult, setIsResult] = useState(false);
   const [isBackendError, setIsBackendError] = useState(false);
+  const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] = useState<SubmitQuestResponse | null>(null);
 
   // setInterval の ID を ref で保持し、外部から即座に停止できるようにする
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -244,64 +257,50 @@ export default function CameraScreen() {
     setIsScoring(false);
     setIsResult(false);
     setIsBackendError(false);
+    setSubmitErrorMessage(null);
+    setSubmitResult(null);
     stopTimer();
   };
 
-  // ── バックエンドへの送信試行（ダミー）─────────────────────
-  // TODO: 実際の通信実装時は attemptSend の中を fetch 等に差し替える
-  const sendHomeworkDataWithRetry = async (payload: object): Promise<boolean> => {
-    const TOTAL_TIMEOUT_MS = 15000; // 全体タイムアウト: 15秒
-    const RETRY_INTERVAL_MS = 3000; // リトライ間隔: 3秒
-    const startTime = Date.now();
-
-    const attemptSend = async (): Promise<boolean> => {
-      // ダミー遅延（実際のAPIコールに差し替え）
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      return false; // モック: 常に失敗 → 実装時に true/false を返すよう変更
-    };
-
-    while (true) {
-      if (!isMountedRef.current) return false;
-      if (Date.now() - startTime >= TOTAL_TIMEOUT_MS) break; // タイムアウト
-
-      const success = await attemptSend();
-      if (success) return true;
-
-      // リトライ前に間隔を空ける（残り時間を超えない）
-      const remaining = TOTAL_TIMEOUT_MS - (Date.now() - startTime);
-      if (remaining <= 0) break;
-      await new Promise(resolve =>
-        setTimeout(resolve, Math.min(RETRY_INTERVAL_MS, remaining))
-      );
-    }
-    return false;
-  };
-
-  // ── 宿題を完了する：送信 → 採点中 → 結果へ ────────────────
+  // ── 宿題を完了する：API送信 → 採点中 → 結果へ ────────────
   const handleSubmitHomework = async () => {
-    const payload = {
-      学年: '中学1年生',
-      教科: selectedSubject,
-      宿題の名前: homeworkName,
-      挑戦前の写真URI: photoUri,
-      挑戦後の写真URI: afterPhotoUri,
-      かかった時間: {
-        秒数: secondsElapsed,
-        フォーマット: formatTime(secondsElapsed),
-      },
-    };
-    console.log('【送信データ】:', payload);
+    const trimmedHomeworkName = homeworkName.trim();
 
+    if (!photoUri || !afterPhotoUri || !selectedSubject || !trimmedHomeworkName) {
+      Alert.alert(
+        '入力不足',
+        '提出する前に、宿題の名前・科目・挑戦前の写真・挑戦後の写真がそろっているか確認してください。'
+      );
+      return;
+    }
+
+    setIsBackendError(false);
+    setSubmitErrorMessage(null);
     setIsScoring(true);
 
-    const success = await sendHomeworkDataWithRetry(payload);
-    if (!isMountedRef.current) return;
+    try {
+      const result = await submitQuest({
+        beforeImage: buildUploadImage(photoUri, 'before.jpg'),
+        afterImage: buildUploadImage(afterPhotoUri, 'after.jpg'),
+        subject: selectedSubject,
+        topic: trimmedHomeworkName,
+      });
 
-    if (success) {
+      if (!isMountedRef.current) return;
+      setSubmitResult(result);
+      setIsBackendError(false);
+      setSubmitErrorMessage(null);
       setIsScoring(false);
       setIsResult(true);
-    } else {
+    } catch (e: unknown) {
+      if (!isMountedRef.current) return;
+      const message = getApiErrorMessage(e, '宿題の送信に失敗しました。');
+      Alert.alert(
+        '送信エラー',
+        `宿題の送信に失敗しました。\n時間をおいて再度お試しください。\n\n${message}`
+      );
       setIsBackendError(true);
+      setSubmitErrorMessage(message);
       setIsScoring(false);
       setIsResult(true);
     }
@@ -309,7 +308,9 @@ export default function CameraScreen() {
 
   // ── 登録するボタン：バリデーション ───────────────────────
   const handleRegister = () => {
-    if (!photoUri || !homeworkName.trim() || !selectedSubject) {
+    const trimmedHomeworkName = homeworkName.trim();
+
+    if (!photoUri || !trimmedHomeworkName || !selectedSubject) {
       setShowErrorModal(true);
       return;
     }
@@ -331,14 +332,19 @@ export default function CameraScreen() {
           >
             {/* バックエンドエラー時のみ赤文字表示 */}
             {isBackendError && (
-              <AppText style={styles.backendErrorText}>バックエンドエラー</AppText>
+              <>
+                <AppText style={styles.backendErrorText}>送信エラー</AppText>
+                <AppText style={styles.backendErrorDetailText}>
+                  {submitErrorMessage ?? '宿題の送信に失敗しました。'}
+                </AppText>
+              </>
             )}
 
             {/* SCORE：（エラー時はスコア数値なし） */}
             <AppText style={styles.resultScore}>
               {isBackendError
                 ? 'SCORE：'
-                : `SCORE：${mockBackendResponse.total_score}点`}
+                : `SCORE：${submitResult?.data?.aiResult?.total_score ?? 0}点`}
             </AppText>
 
             {/* 二重線 */}
@@ -368,18 +374,27 @@ export default function CameraScreen() {
             {/* 評価項目：エラー時は星なし・ラベルのみ */}
             <View style={styles.ratingContainer}>
               <AppText style={styles.ratingText}>
-                {`作業量：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.volume)}`}
+                {`作業量：${isBackendError ? '' : renderStars(submitResult?.data?.aiResult?.score_breakdown?.volume ?? 0)}`}
               </AppText>
               <AppText style={styles.ratingText}>
-                {`過程：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.process)}`}
+                {`過程：${isBackendError ? '' : renderStars(submitResult?.data?.aiResult?.score_breakdown?.process ?? 0)}`}
               </AppText>
               <AppText style={styles.ratingText}>
-                {`丁寧さ：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.carefulness)}`}
+                {`丁寧さ：${isBackendError ? '' : renderStars(submitResult?.data?.aiResult?.score_breakdown?.carefulness ?? 0)}`}
               </AppText>
               <AppText style={styles.ratingText}>
-                {`振り返り：${isBackendError ? '' : renderStars(mockBackendResponse.score_breakdown.review)}`}
+                {`振り返り：${isBackendError ? '' : renderStars(submitResult?.data?.aiResult?.score_breakdown?.review ?? 0)}`}
               </AppText>
             </View>
+
+            {!isBackendError && submitResult?.data?.aiResult?.feedback_to_child && (
+              <View style={styles.feedbackBox}>
+                <AppText style={styles.feedbackTitle}>AIからのひとこと</AppText>
+                <AppText style={styles.feedbackText}>
+                  {submitResult.data.aiResult.feedback_to_child}
+                </AppText>
+              </View>
+            )}
 
             {/* AIアドバイスボタン画像（エラー時は Button M2.png に切り替え） */}
             <TouchableOpacity
@@ -492,7 +507,7 @@ export default function CameraScreen() {
             {/* 1. 赤い角丸情報ボックス */}
             <View style={styles.challengeInfoBox}>
               <AppText style={styles.challengeInfoText}>
-                {'中学1年生：' + (selectedSubject ?? '') + '\n' + homeworkName + '\nに挑戦中！'}
+                {GRADE + '：' + (selectedSubject ?? '') + '\n' + homeworkName + '\nに挑戦中！'}
               </AppText>
             </View>
 
@@ -718,7 +733,7 @@ export default function CameraScreen() {
                   setHomework({
                     grade: GRADE,
                     subject: selectedSubject ?? '',
-                    name: homeworkName,
+                    name: homeworkName.trim(),
                   });
                   setShowSuccessModal(false);
                   setSecondsElapsed(0);
@@ -1009,6 +1024,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 1,
     marginBottom: 4,
+  },
+  backendErrorDetailText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 12,
+    paddingHorizontal: 20,
+  },
+  feedbackBox: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(20, 20, 20, 0.45)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  feedbackTitle: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  feedbackText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    lineHeight: 22,
+    textAlign: 'left',
   },
 
   // ボタン画像共通：中央揃えのラッパー

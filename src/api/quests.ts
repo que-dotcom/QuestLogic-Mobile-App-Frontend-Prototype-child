@@ -6,31 +6,36 @@ import type {
   GetQuestsResponse,
 } from "../types/api";
 
+export interface UploadImageFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
+export interface SubmitQuestParams {
+  beforeImage: UploadImageFile;
+  afterImage: UploadImageFile;
+  subject?: string;
+  topic?: string;
+}
+
 /**
  * POST /api/quests/submit
  * クエストを提出し、AI 分析・ポイント付与を行う。Child 専用。
  * Content-Type は multipart/form-data。
  * childId / familyId は JWT から取得されるため送付不要。
  *
- * @param beforeImage 提出前の画像ファイル
- * @param afterImage  提出後の画像ファイル
- * @param subject     科目（任意）
- * @param topic       トピック（任意）
+ * 送信する FormData のキー:
+ * - beforeImage
+ * - afterImage
+ * - subject (任意)
+ * - topic (任意)
+ *
+ * childId / familyId は JWT から解決されるため送付しない。
  */
-export const submitQuest = async (params: {
-  beforeImage: {
-    uri: string;
-    name: string;
-    type: string;
-  };
-  afterImage: {
-    uri: string;
-    name: string;
-    type: string;
-  };
-  subject?: string;
-  topic?: string;
-}): Promise<SubmitQuestResponse> => {
+export const submitQuest = async (
+  params: SubmitQuestParams
+): Promise<SubmitQuestResponse> => {
   const formData = new FormData();
 
   formData.append("beforeImage", {

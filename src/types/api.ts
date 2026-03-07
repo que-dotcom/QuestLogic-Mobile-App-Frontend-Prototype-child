@@ -54,12 +54,18 @@ export interface ScoreBreakdown {
   review: number;
 }
 
+export interface AiFeature {
+  type: string;
+  location: string;
+  description: string;
+}
+
 /** /api/analyze は success ラッパーなしで直接このオブジェクトを返す */
 export interface AnalyzeResponse {
   summary: string;
   score_breakdown: ScoreBreakdown;
   total_score: number;
-  features: string[];
+  features: AiFeature[];
   suspicion_flag: boolean;
   suspicion_reason: string | null;
   feedback_to_child: string;
@@ -109,9 +115,13 @@ export interface ConsumePointsResponse extends BaseResponse {
 
 export interface AiResult {
   score_breakdown: ScoreBreakdown;
+  summary?: string;
   total_score?: number;
+  features?: AiFeature[];
+  suspicion_flag?: boolean;
+  suspicion_reason?: string | null;
   feedback_to_child?: string;
-  feedback_to_parent: string;
+  feedback_to_parent?: string;
 }
 
 export interface Quest {

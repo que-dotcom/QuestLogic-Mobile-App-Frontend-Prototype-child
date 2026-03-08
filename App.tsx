@@ -11,6 +11,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { HomeworkProvider } from './src/context/HomeworkContext';
 import { AdviceProvider } from './src/context/AdviceContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { BGMProvider } from './src/context/BGMContext';
 import LoginScreen from './src/screens/auth/LoginScreen';
 
 // ルートガード: 認証状態に応じて表示するナビゲーターを切り替える
@@ -48,14 +49,16 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <HomeworkProvider>
-          <AdviceProvider>
-            <NavigationContainer>
-              <StatusBar style="light" backgroundColor="#0a0a14" />
-              <RootNavigator />
-            </NavigationContainer>
-          </AdviceProvider>
-        </HomeworkProvider>
+        <BGMProvider>
+          <HomeworkProvider>
+            <AdviceProvider>
+              <NavigationContainer>
+                <StatusBar style="light" backgroundColor="#0a0a14" />
+                <RootNavigator />
+              </NavigationContainer>
+            </AdviceProvider>
+          </HomeworkProvider>
+        </BGMProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

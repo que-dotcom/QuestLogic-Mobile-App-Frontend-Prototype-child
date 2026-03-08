@@ -13,11 +13,11 @@ import {
   Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
 import { useAuth } from '../context/AuthContext';
+import { useBGM, BgmCategory } from '../context/BGMContext';
 
 // ─── 型定義 ────────────────────────────────────────────────────────────────
 
@@ -57,13 +57,20 @@ const STORAGE_KEYS = {
   bgmCategory: 'settings_bgmCategory',
 } as const;
 
-type BgmCategory = 'battle' | 'stylish' | 'relaxing';
+// BgmCategory 型は BGMContext から import
 
 const BGM_CATEGORIES: Array<{ key: BgmCategory; label: string }> = [
   { key: 'battle', label: 'レトロ戦闘風に変更' },
   { key: 'stylish', label: 'レトロおしゃれ風に変更' },
   { key: 'relaxing', label: 'レトロやすらぎ風に変更' },
 ];
+
+// カテゴリ選択時に表示するバナー画像（require は静的解決が必要なのでここで定義）
+const BGM_CATEGORY_IMAGES: Record<BgmCategory, ReturnType<typeof require>> = {
+  battle:   require('../../asset/settings/images/Retro battle style.png'),
+  stylish:  require('../../asset/settings/images/Retro stylish style.png'),
+  relaxing: require('../../asset/settings/images/Retro and relaxing style.png'),
+};
 
 // ─── タブヘッダー画像マップ ────────────────────────────────────────────────────
 
@@ -218,17 +225,16 @@ export default function SettingsScreen() {
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
   const [showNotificationDesc, setShowNotificationDesc] = useState(true);
 
-  // BGM / SE
-  const [bgmEnabled, setBgmEnabled] = useState(true);
+  // BGM（再生状態は BGMContext が管理）
+  const { isPlaying, selectedCategory, play, stop, changeCategory } = useBGM();
   const [seEnabled, setSeEnabled] = useState(true);
   const [bgmVolume, setBgmVolume] = useState(0.8);
   const [seVolume, setSeVolume] = useState(0.6);
   const [bgmCategoryOpen, setBgmCategoryOpen] = useState(false);
-  const [selectedBgmCategory, setSelectedBgmCategory] = useState<BgmCategory>('relaxing');
 
-  // BGM 再生管理
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const bgmFadeAnim = useRef(new Animated.Value(bgmEnabled ? 1 : 0)).current;
+  // 音量インジケーターのパルスアニメーション（0=min / 1=mid / 2=max）
+  const pulseAnim     = useRef(new Animated.Value(0)).current;
+  const pulseLoopRef  = useRef<Animated.CompositeAnimation | null>(null);
 
   // 使い方モーダル
   const [howtoModalVisible, setHowtoModalVisible] = useState(false);
@@ -245,86 +251,72 @@ export default function SettingsScreen() {
     }
   };
 
-  // ── 設定の読み込み ────────────────────────────────────────────────────────
-
-  const loadStoredSettings = async () => {
-    try {
-      const [
-        notificationRaw,
-        bgmEnabledRaw,
-        seEnabledRaw,
-        bgmVolumeRaw,
-        seVolumeRaw,
-      ] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.isNotificationEnabled),
-        AsyncStorage.getItem(STORAGE_KEYS.bgmEnabled),
-        AsyncStorage.getItem(STORAGE_KEYS.seEnabled),
-        AsyncStorage.getItem(STORAGE_KEYS.bgmVolume),
-        AsyncStorage.getItem(STORAGE_KEYS.seVolume),
-      ]);
-      if (notificationRaw) setIsNotificationEnabled(JSON.parse(notificationRaw));
-      if (bgmEnabledRaw) setBgmEnabled(JSON.parse(bgmEnabledRaw));
-      if (seEnabledRaw) setSeEnabled(JSON.parse(seEnabledRaw));
-      if (bgmVolumeRaw) setBgmVolume(JSON.parse(bgmVolumeRaw));
-      if (seVolumeRaw) setSeVolume(JSON.parse(seVolumeRaw));
-    } catch (_) {
-      // 読み込みエラーは無視
-    }
-  };
+  // ── 設定の読み込み（BGM 以外：通知・SE） ────────────────────────────────
 
   useEffect(() => {
-    loadStoredSettings();
-  }, []);
-
-  // bgmEnabled が変化するたびに音量インジケーターをアニメーション
-  useEffect(() => {
-    Animated.timing(bgmFadeAnim, {
-      toValue: bgmEnabled ? 1 : 0,
-      duration: 450,
-      useNativeDriver: true,
-    }).start();
-  }, [bgmEnabled]);
-
-  // アンマウント時にサウンドリソースを解放
-  useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
+    const initSettings = async () => {
+      try {
+        const [notificationRaw, seEnabledRaw, bgmVolumeRaw, seVolumeRaw] =
+          await Promise.all([
+            AsyncStorage.getItem(STORAGE_KEYS.isNotificationEnabled),
+            AsyncStorage.getItem(STORAGE_KEYS.seEnabled),
+            AsyncStorage.getItem(STORAGE_KEYS.bgmVolume),
+            AsyncStorage.getItem(STORAGE_KEYS.seVolume),
+          ]);
+        if (notificationRaw) setIsNotificationEnabled(JSON.parse(notificationRaw));
+        if (seEnabledRaw)    setSeEnabled(JSON.parse(seEnabledRaw));
+        if (bgmVolumeRaw)    setBgmVolume(JSON.parse(bgmVolumeRaw));
+        if (seVolumeRaw)     setSeVolume(JSON.parse(seVolumeRaw));
+      } catch (_) {
+        // 読み込みエラーは無視
       }
     };
+    initSettings();
   }, []);
 
-  // ── BGM 再生ハンドラ ─────────────────────────────────────────────────────
+  // ── 音量インジケーター パルスアニメーション ──────────────────────────────
+  // isPlaying=true → min→mid→max→mid をループ
+  // isPlaying=false → min (0) へフェードアウト
 
-  const handleBgmPlay = async () => {
-    try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      if (!soundRef.current) {
-        const { sound } = await Audio.Sound.createAsync(
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require('../../asset/settings/BGM/moonlit.free204.wav'),
-          { isLooping: true }
-        );
-        soundRef.current = sound;
-      }
-      await soundRef.current.playAsync();
-      setBgmEnabled(true);
-      persistValue(STORAGE_KEYS.bgmEnabled, true);
-    } catch (e) {
-      console.warn('[BGM] playAsync failed:', e);
+  useEffect(() => {
+    if (pulseLoopRef.current) {
+      pulseLoopRef.current.stop();
+      pulseLoopRef.current = null;
     }
-  };
 
-  const handleBgmStop = async () => {
-    try {
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-      }
-      setBgmEnabled(false);
-      persistValue(STORAGE_KEYS.bgmEnabled, false);
-    } catch (e) {
-      console.warn('[BGM] stopAsync failed:', e);
+    if (isPlaying) {
+      pulseAnim.setValue(0);
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 480, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 2, duration: 480, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 480, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0, duration: 480, useNativeDriver: true }),
+        ])
+      );
+      pulseLoopRef.current = loop;
+      loop.start();
+    } else {
+      Animated.timing(pulseAnim, { toValue: 0, duration: 350, useNativeDriver: true }).start();
     }
+
+    return () => {
+      if (pulseLoopRef.current) {
+        pulseLoopRef.current.stop();
+        pulseLoopRef.current = null;
+      }
+    };
+  }, [isPlaying]);
+
+  // ── BGM ハンドラ（BGMContext に委譲） ────────────────────────────────────
+
+  const handleBgmPlay = () => play(selectedCategory);
+
+  const handleBgmStop = () => stop();
+
+  const handleCategorySelect = (category: BgmCategory) => {
+    setBgmCategoryOpen(false);
+    changeCategory(category);
   };
 
   // ── セクション開閉（複数同時展開対応） ───────────────────────────────────
@@ -555,49 +547,43 @@ export default function SettingsScreen() {
           </View>
         );
 
-      case 'volume':
+      case 'volume': {
+        // パルスアニメーション opacity の補間値
+        const minOp = pulseAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [1, 0, 0] });
+        const midOp = pulseAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [0, 1, 0] });
+        const maxOp = pulseAnim.interpolate({ inputRange: [0, 1, 2], outputRange: [0, 0, 1] });
+
         return (
           <View style={styles.bgmSection}>
 
-            {/* ── BGMを流すボタン ─────────────────────────────── */}
+            {/* ── BGMを流すボタン（再生中は赤枠アクティブ） ── */}
             <TouchableOpacity
-              style={styles.bgmPlayButton}
+              style={[styles.bgmPlayButton, isPlaying && styles.bgmButtonActive]}
               onPress={handleBgmPlay}
               activeOpacity={0.8}
             >
               <AppText style={styles.bgmPlayButtonText}>BGMを流す</AppText>
             </TouchableOpacity>
 
-            {/* ── 音量インジケーター（フェードアニメーション） ── */}
+            {/* ── 音量インジケーター（パルスアニメーション: min→mid→max→mid ループ） ── */}
             <View style={styles.bgmIndicatorWrapper}>
-              {/* 停止状態 */}
-              <Animated.View
-                style={[
-                  styles.bgmIndicatorLayer,
-                  { opacity: bgmFadeAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
-                ]}
-              >
-                <Image
-                  source={require('../../asset/settings/images/BGM minimum.png')}
-                  style={styles.bgmIndicatorImage}
-                  resizeMode="contain"
-                />
+              <Animated.View style={[styles.bgmIndicatorLayer, { opacity: minOp }]}>
+                <Image source={require('../../asset/settings/images/BGM minimum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
               </Animated.View>
-              {/* 再生状態 */}
-              <Animated.View
-                style={[
-                  styles.bgmIndicatorLayer,
-                  styles.bgmIndicatorLayerAbsolute,
-                  { opacity: bgmFadeAnim },
-                ]}
-              >
-                <Image
-                  source={require('../../asset/settings/images/BGM maximum.png')}
-                  style={styles.bgmIndicatorImage}
-                  resizeMode="contain"
-                />
+              <Animated.View style={[styles.bgmIndicatorLayer, styles.bgmIndicatorLayerAbsolute, { opacity: midOp }]}>
+                <Image source={require('../../asset/settings/images/BGM middle.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
+              </Animated.View>
+              <Animated.View style={[styles.bgmIndicatorLayer, styles.bgmIndicatorLayerAbsolute, { opacity: maxOp }]}>
+                <Image source={require('../../asset/settings/images/BGM maximum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
               </Animated.View>
             </View>
+
+            {/* ── カテゴリバナー（選択中のスタイル画像） ─────── */}
+            <Image
+              source={BGM_CATEGORY_IMAGES[selectedCategory]}
+              style={styles.bgmCategoryBanner}
+              resizeMode="contain"
+            />
 
             {/* ── カテゴリドロップダウン ─────────────────────── */}
             <TouchableOpacity
@@ -616,14 +602,10 @@ export default function SettingsScreen() {
                     key={key}
                     style={[
                       styles.bgmCategoryItem,
-                      selectedBgmCategory === key && styles.bgmCategoryItemSelected,
+                      selectedCategory === key && styles.bgmCategoryItemSelected,
                       index === BGM_CATEGORIES.length - 1 && styles.bgmCategoryItemLast,
                     ]}
-                    onPress={() => {
-                      setSelectedBgmCategory(key);
-                      setBgmCategoryOpen(false);
-                      persistValue(STORAGE_KEYS.bgmCategory, key);
-                    }}
+                    onPress={() => handleCategorySelect(key)}
                     activeOpacity={0.7}
                   >
                     <AppText style={styles.bgmCategoryItemText}>{label}</AppText>
@@ -633,9 +615,9 @@ export default function SettingsScreen() {
               </View>
             )}
 
-            {/* ── BGMを流さないボタン ──────────────────────────── */}
+            {/* ── BGMを流さないボタン（停止中は赤枠アクティブ） ── */}
             <TouchableOpacity
-              style={styles.bgmStopButton}
+              style={[styles.bgmStopButton, !isPlaying && styles.bgmButtonActive]}
               onPress={handleBgmStop}
               activeOpacity={0.8}
             >
@@ -645,6 +627,7 @@ export default function SettingsScreen() {
 
           </View>
         );
+      }
 
       case 'howto':
         return (
@@ -1068,10 +1051,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  // BGMを流すボタン（赤ボーダー Outline スタイル）
+  // BGMを流すボタン（デフォルトは赤ボーダー Outline スタイル）
   bgmPlayButton: {
     borderWidth: 1,
-    borderColor: '#d4031c',
+    borderColor: 'rgba(255,255,255,0.35)',
     backgroundColor: 'rgba(255,255,255,0.05)',
     width: 196,
     height: 36,
@@ -1083,6 +1066,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
     letterSpacing: 1,
+  },
+  // アクティブ状態（選択中ボタン）は赤枠
+  bgmButtonActive: {
+    borderColor: '#d4031c',
+    borderWidth: 2,
   },
   // 音量インジケーターラッパー（2枚の画像を重ねてフェード）
   bgmIndicatorWrapper: {
@@ -1104,6 +1092,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // カテゴリバナー画像（選択カテゴリに応じて切り替わる）
+  bgmCategoryBanner: {
+    width: '100%',
+    height: 60,
+  },
+
   // カテゴリドロップダウンヘッダー
   bgmCategoryButton: {
     width: '100%',
@@ -1156,10 +1150,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
   },
-  // BGMを流さないボタン（白ボーダー Outline スタイル）
+  // BGMを流さないボタン（デフォルトは半透明白ボーダー）
   bgmStopButton: {
     borderWidth: 1,
-    borderColor: '#fff',
+    borderColor: 'rgba(255,255,255,0.35)',
     backgroundColor: 'rgba(255,255,255,0.05)',
     width: 196,
     height: 36,

@@ -13,6 +13,8 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -24,6 +26,20 @@ import { useAdvice } from '../context/AdviceContext';
 import { submitQuest } from '../api/quests';
 import { getApiErrorMessage } from '../api/client';
 import type { SubmitQuestResponse } from '../types/api';
+
+// 通知を受け取ったときの表示設定（フォアグラウンド時もアラートを表示）
+// Expo Go では動作しない場合があるため try-catch でフォールバック
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  console.warn('[Notifications] setNotificationHandler failed:', e);
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -308,6 +324,23 @@ export default function CameraScreen() {
       setSubmitErrorMessage(null);
       setIsScoring(false);
       setIsResult(true);
+
+      // 通知設定が ON の場合のみローカル通知を発火
+      try {
+        const raw = await AsyncStorage.getItem('isNotificationEnabled');
+        if (raw !== null && JSON.parse(raw) === true) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'QuestLogic',
+              body: 'AIからの回答が来ています',
+            },
+            trigger: null,
+          });
+        }
+      } catch (e) {
+        // Expo Go など通知が使えない環境ではエラーを吸収して継続
+        console.warn('[Notifications] scheduleNotificationAsync failed:', e);
+      }
     } catch (e: unknown) {
       if (!isMountedRef.current) return;
       const message = getApiErrorMessage(e, '宿題の送信に失敗しました。');

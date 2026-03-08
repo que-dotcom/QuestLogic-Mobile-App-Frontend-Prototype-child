@@ -1,10 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   StyleSheet,
   ImageBackground,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -16,41 +15,19 @@ import HeaderProfile from '../components/HeaderProfile';
 import StatusBars from '../components/StatusBars';
 import MainActionArea from '../components/MainActionArea';
 
-// SettingsScreen が AsyncStorage に保存する表示名のキー（共通定数）
-const SETTINGS_USER_NAME_KEY = 'settings_userName';
-
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const { user, refreshUser } = useAuth();
-  const [localUserName, setLocalUserName] = useState<string>('ゲスト');
 
   useFocusEffect(
     useCallback(() => {
       void refreshUser();
-
-      // SettingsScreen が保存した表示名を読み込む。
-      // エラーや不正な値の場合は state を変えずフォールバック値を維持する。
-      const loadLocalUserName = async () => {
-        try {
-          const raw = await AsyncStorage.getItem(SETTINGS_USER_NAME_KEY);
-          if (raw !== null) {
-            const parsed: unknown = JSON.parse(raw);
-            if (typeof parsed === 'string' && parsed.trim().length > 0) {
-              setLocalUserName(parsed);
-            }
-          }
-        } catch {
-          // 読み込み・パース失敗時は現在の state（'ゲスト'）を維持する
-        }
-      };
-
-      void loadLocalUserName();
     }, [refreshUser])
   );
 
-  // バックエンドのアカウント名を優先し、なければ設定画面の表示名、それもなければ 'ゲスト'
-  const userName = user?.name || localUserName;
+  // AuthContext の user.name を Single Source of Truth として使用（refreshUser 内で local_userName マージ済み）
+  const userName = user?.name ?? 'ゲスト';
   const exp = user?.exp || 0;
   const currentMinutes =
     user?.currentMinutes ?? (user?.currentPoints ?? 0) * (user?.minutesPerPoint ?? 0);

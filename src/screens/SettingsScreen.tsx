@@ -13,8 +13,10 @@ import {
   Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
+import { useAuth } from '../context/AuthContext';
 
 // ─── 型定義 ────────────────────────────────────────────────────────────────
 
@@ -46,8 +48,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string; icon: string }> = [
 ];
 
 const STORAGE_KEYS = {
-  userName: 'settings_userName',
-  notificationsEnabled: 'settings_notificationsEnabled',
+  isNotificationEnabled: 'isNotificationEnabled',
   bgmEnabled: 'settings_bgmEnabled',
   seEnabled: 'settings_seEnabled',
   bgmVolume: 'settings_bgmVolume',
@@ -65,8 +66,6 @@ const SECTION_HEADER_IMAGES: Record<SectionKey, ReturnType<typeof require>> = {
 };
 
 // ─── How-to 画像マップ ───────────────────────────────────────────────────────
-// asset/settings/images/ 配下の画像を参照する。
-// 画像が未配置の場合はビルドエラーになるため、実際のファイル配置に合わせて管理すること。
 
 const howtoImages: Record<HowtoPageLayout, ReturnType<typeof require>> = {
   home1: require('../../asset/settings/images/image 3.png'),
@@ -176,17 +175,38 @@ const howtoPages: Record<HowtoTopic, HowtoPage[]> = {
 
 // ─── メインコンポーネント ────────────────────────────────────────────────────
 
-export default function SettingsScreen() {
-  // ── State ─────────────────────────────────────────────────────────────────
-  const [expanded, setExpanded] = useState<SectionKey | null>(null);
+// 通知ボタン画像の幅（セクション内余白を引いた実効幅）
+const { width: SCREEN_W } = Dimensions.get('window');
+const NOTIF_IMG_W = SCREEN_W - 20 - 24; // sectionsContainer margin×2 + sectionBody padding×2
 
-  // ユーザー名
+export default function SettingsScreen() {
+  const { user, updateLocalUserName } = useAuth();
+
+  // ── State ─────────────────────────────────────────────────────────────────
+
+  // 複数タブを同時に開けるよう Record 管理に変更
+  const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
+    notification: false,
+    volume: false,
+    logout: false,
+    howto: false,
+    about: false,
+  });
+
+  // ユーザー名（AuthContext の user.name を Single Source of Truth とし、ローカル state は表示用）
   const [userName, setUserName] = useState('匿名さん');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
 
+  useEffect(() => {
+    if (user?.name) {
+      setUserName(user.name);
+    }
+  }, [user?.name]);
+
   // 通知
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
+  const [showNotificationDesc, setShowNotificationDesc] = useState(true);
 
   // BGM / SE
   const [bgmEnabled, setBgmEnabled] = useState(true);
@@ -213,17 +233,20 @@ export default function SettingsScreen() {
 
   const loadStoredSettings = async () => {
     try {
-      const [userNameRaw, notificationsRaw, bgmEnabledRaw, seEnabledRaw, bgmVolumeRaw, seVolumeRaw] =
-        await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.userName),
-          AsyncStorage.getItem(STORAGE_KEYS.notificationsEnabled),
-          AsyncStorage.getItem(STORAGE_KEYS.bgmEnabled),
-          AsyncStorage.getItem(STORAGE_KEYS.seEnabled),
-          AsyncStorage.getItem(STORAGE_KEYS.bgmVolume),
-          AsyncStorage.getItem(STORAGE_KEYS.seVolume),
-        ]);
-      if (userNameRaw) setUserName(JSON.parse(userNameRaw));
-      if (notificationsRaw) setNotificationsEnabled(JSON.parse(notificationsRaw));
+      const [
+        notificationRaw,
+        bgmEnabledRaw,
+        seEnabledRaw,
+        bgmVolumeRaw,
+        seVolumeRaw,
+      ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.isNotificationEnabled),
+        AsyncStorage.getItem(STORAGE_KEYS.bgmEnabled),
+        AsyncStorage.getItem(STORAGE_KEYS.seEnabled),
+        AsyncStorage.getItem(STORAGE_KEYS.bgmVolume),
+        AsyncStorage.getItem(STORAGE_KEYS.seVolume),
+      ]);
+      if (notificationRaw) setIsNotificationEnabled(JSON.parse(notificationRaw));
       if (bgmEnabledRaw) setBgmEnabled(JSON.parse(bgmEnabledRaw));
       if (seEnabledRaw) setSeEnabled(JSON.parse(seEnabledRaw));
       if (bgmVolumeRaw) setBgmVolume(JSON.parse(bgmVolumeRaw));
@@ -237,14 +260,19 @@ export default function SettingsScreen() {
     loadStoredSettings();
   }, []);
 
-  // ── セクション開閉 ────────────────────────────────────────────────────────
+  // ── セクション開閉（複数同時展開対応） ───────────────────────────────────
 
   const toggleExpand = (key: SectionKey) => {
     setExpanded((prev) => {
-      const next = prev === key ? null : key;
-      if (next !== 'howto') {
+      const next = { ...prev, [key]: !prev[key] };
+      // How-to モーダルはタブが閉じたときにリセット
+      if (!next.howto) {
         setHowtoModalVisible(false);
         setHowtoModalPage(0);
+      }
+      // 通知タブを開いたとき：説明画像を再表示
+      if (key === 'notification' && next[key]) {
+        setShowNotificationDesc(true);
       }
       return next;
     });
@@ -257,14 +285,48 @@ export default function SettingsScreen() {
     setEditingName(true);
   };
 
-  const saveName = () => {
-    setUserName(nameDraft);
-    persistValue(STORAGE_KEYS.userName, nameDraft);
-    setEditingName(false);
+  const saveName = async () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      Alert.alert('入力エラー', '名前を入力してください。');
+      return;
+    }
+    try {
+      await updateLocalUserName(trimmed);
+      setEditingName(false);
+    } catch (error) {
+      console.error('Save Name Error:', error);
+      Alert.alert('保存エラー', '名前の更新に失敗しました。時間をおいて再度お試しください。');
+    }
   };
 
   const cancelNameEdit = () => {
     setEditingName(false);
+  };
+
+  // ── 通知ハンドラ ──────────────────────────────────────────────────────────
+
+  const handleDisableNotification = async () => {
+    setIsNotificationEnabled(false);
+    await persistValue(STORAGE_KEYS.isNotificationEnabled, false);
+  };
+
+  const handleEnableNotification = async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status === 'granted') {
+        setIsNotificationEnabled(true);
+        await persistValue(STORAGE_KEYS.isNotificationEnabled, true);
+      } else {
+        Alert.alert(
+          '通知の許可が必要です',
+          'OSの設定アプリから、このアプリの通知を許可してください。'
+        );
+      }
+    } catch (e) {
+      // Expo Go など権限リクエストが使えない環境ではエラーを吸収して継続
+      console.warn('[Notifications] requestPermissionsAsync failed:', e);
+    }
   };
 
   // ── ログアウト ────────────────────────────────────────────────────────────
@@ -374,62 +436,57 @@ export default function SettingsScreen() {
       case 'notification':
         return (
           <View style={styles.notificationSection}>
-            <View style={styles.notificationHint}>
-              <View style={styles.notificationHintRow}>
-                <AppText style={styles.notificationHintIcon}>🔕</AppText>
-                <AppText style={styles.notificationHintText}>なら、通知をオフ</AppText>
-              </View>
-              <View style={styles.notificationHintRow}>
-                <AppText style={styles.notificationHintIcon}>⏰</AppText>
-                <AppText style={styles.notificationHintText}>なら、通知をオン</AppText>
-              </View>
-              <AppText style={styles.notificationHintFooter}>
-                {notificationsEnabled ? '⏰に設定されています' : '🔕に設定されています'}
-              </AppText>
-            </View>
-            <View style={styles.notificationButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.notificationButton,
-                  !notificationsEnabled && styles.notificationButtonActive,
-                ]}
-                onPress={() => {
-                  setNotificationsEnabled(false);
-                  persistValue(STORAGE_KEYS.notificationsEnabled, false);
-                }}
-                activeOpacity={0.7}
-              >
-                <AppText
-                  style={[
-                    styles.notificationButtonText,
-                    !notificationsEnabled && styles.notificationButtonActiveText,
-                  ]}
+            {/* 説明画像（× で非表示、タブ再開で再表示） */}
+            {showNotificationDesc && (
+              <View style={styles.notificationDescWrapper}>
+                <Image
+                  source={require('../../asset/settings/images/Notification Description.png')}
+                  style={styles.notificationDescImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.notificationDescClose}
+                  onPress={() => setShowNotificationDesc(false)}
+                  activeOpacity={0.7}
                 >
-                  通知を許可しない
-                </AppText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.notificationButton,
-                  notificationsEnabled && styles.notificationButtonActive,
-                  { marginBottom: 0 },
-                ]}
-                onPress={() => {
-                  setNotificationsEnabled(true);
-                  persistValue(STORAGE_KEYS.notificationsEnabled, true);
-                }}
-                activeOpacity={0.7}
-              >
-                <AppText
-                  style={[
-                    styles.notificationButtonText,
-                    notificationsEnabled && styles.notificationButtonActiveText,
-                  ]}
-                >
-                  通知を許可する
-                </AppText>
-              </TouchableOpacity>
-            </View>
+                  <AppText style={styles.notificationDescCloseText}>✕</AppText>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 通知を許可しない ボタン */}
+            <TouchableOpacity
+              onPress={handleDisableNotification}
+              activeOpacity={0.8}
+              style={styles.notificationToggleButton}
+            >
+              <Image
+                source={
+                  !isNotificationEnabled
+                    ? require('../../asset/settings/images/Notifications disabled on.png')
+                    : require('../../asset/settings/images/Notifications disabled off.png')
+                }
+                style={styles.notificationToggleImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+
+            {/* 通知を許可する ボタン */}
+            <TouchableOpacity
+              onPress={handleEnableNotification}
+              activeOpacity={0.8}
+              style={[styles.notificationToggleButton, { marginBottom: 0 }]}
+            >
+              <Image
+                source={
+                  isNotificationEnabled
+                    ? require('../../asset/settings/images/Notifications enabled on.png')
+                    : require('../../asset/settings/images/Notifications enabled off.png')
+                }
+                style={styles.notificationToggleImage}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
           </View>
         );
 
@@ -615,24 +672,7 @@ export default function SettingsScreen() {
       resizeMode="cover"
     >
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.wrapper}>
-        {/* トップバー（ユーザー名表示・編集） */}
-        <View style={styles.topBar}>
-          <View style={styles.topCharacterPlaceholder} />
-
-          <TouchableOpacity style={styles.topCenter} onPress={openNameEditor} activeOpacity={0.8}>
-            <View style={styles.topUnderline} />
-            <AppText style={styles.topTitle}>{userName}</AppText>
-          </TouchableOpacity>
-
-          <Image
-            source={require('../../asset/settings/images/edit-alt.png')}
-            style={styles.topEditIconImage}
-            resizeMode="contain"
-          />
-        </View>
-
-        {/* ユーザー名編集モーダル */}
+        {/* ユーザー名編集モーダル（ScrollView の外に配置して確実にオーバーレイ表示） */}
         <Modal
           visible={editingName}
           transparent
@@ -670,35 +710,55 @@ export default function SettingsScreen() {
           </View>
         </Modal>
 
-        {/* セクション一覧 */}
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          {SECTIONS.map((section) => {
-            const isOpen = expanded === section.key;
-            return (
-              <View key={section.key} style={styles.sectionContainer}>
-                <TouchableOpacity
-                  onPress={() => toggleExpand(section.key)}
-                  style={styles.sectionHeader}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={SECTION_HEADER_IMAGES[section.key]}
-                    style={
-                      section.key === 'about'
-                        ? styles.tabImageCredit
-                        : styles.tabImageNormal
-                    }
-                    resizeMode="contain"
-                  />
-                </TouchableOpacity>
-                {isOpen && (
-                  <View style={styles.sectionBody}>{renderSectionBody(section.key)}</View>
-                )}
-              </View>
-            );
-          })}
+        {/* 画面全体をスクロール可能にする */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* トップバー（ユーザー名表示・編集） */}
+          <View style={styles.topBar}>
+            <View style={styles.topCharacterPlaceholder} />
+            <TouchableOpacity style={styles.topCenter} onPress={openNameEditor} activeOpacity={0.8}>
+              <View style={styles.topUnderline} />
+              <AppText style={styles.topTitle}>{userName}</AppText>
+            </TouchableOpacity>
+            <Image
+              source={require('../../asset/settings/images/edit-alt.png')}
+              style={styles.topEditIconImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          {/* セクション一覧（各タブを独立して開閉） */}
+          <View style={styles.sectionsContainer}>
+            {SECTIONS.map((section) => {
+              const isOpen = expanded[section.key];
+              return (
+                <View key={section.key} style={styles.sectionContainer}>
+                  <TouchableOpacity
+                    onPress={() => toggleExpand(section.key)}
+                    style={styles.sectionHeader}
+                    activeOpacity={0.8}
+                  >
+                    <Image
+                      source={SECTION_HEADER_IMAGES[section.key]}
+                      style={
+                        section.key === 'about'
+                          ? styles.tabImageCredit
+                          : styles.tabImageNormal
+                      }
+                      resizeMode="contain"
+                    />
+                  </TouchableOpacity>
+                  {isOpen && (
+                    <View style={styles.sectionBody}>{renderSectionBody(section.key)}</View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
         </ScrollView>
-        </View>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -715,8 +775,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  wrapper: {
+
+  // ── 画面全体スクロール ────────────────────────────────────────────────────
+  scroll: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 48,
   },
 
   // ── トップバー ────────────────────────────────────────────────────────────
@@ -748,10 +813,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: 'rgba(255,255,255,0.75)',
     paddingHorizontal: 6,
-  },
-  topEditIcon: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.85)',
   },
   topEditIconImage: {
     width: 28,
@@ -816,13 +877,9 @@ const styles = StyleSheet.create({
   },
 
   // ── セクション共通 ────────────────────────────────────────────────────────
-  scroll: {
-    flex: 1,
+  sectionsContainer: {
     marginHorizontal: 10,
     marginTop: 12,
-  },
-  scrollContent: {
-    paddingBottom: 38,
   },
   sectionContainer: {
     marginBottom: 10,
@@ -832,12 +889,10 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
   },
-  // 通常タブの画像（横幅いっぱいに表示）
   tabImageNormal: {
     width: '100%',
     height: 56,
   },
-  // credit.png は小さめなので引き延ばさず左揃えで表示
   tabImageCredit: {
     width: 200,
     height: 44,
@@ -872,60 +927,44 @@ const styles = StyleSheet.create({
 
   // ── 通知設定 ──────────────────────────────────────────────────────────────
   notificationSection: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    borderRadius: 10,
-    padding: 12,
+    gap: 10,
   },
-  notificationHint: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    marginBottom: 12,
+  // 説明画像のラッパー（×ボタンを絶対配置するために relative）
+  notificationDescWrapper: {
+    width: NOTIF_IMG_W,
+    alignSelf: 'center',
+    position: 'relative',
   },
-  notificationHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+  notificationDescImage: {
+    width: NOTIF_IMG_W,
+    height: undefined,
+    // Figma: 306 × 82 px → アスペクト比を維持して高さ自動計算
+    aspectRatio: 306 / 82,
+    resizeMode: 'contain' as const,
   },
-  notificationHintIcon: {
-    fontSize: 16,
-    color: '#aab2ff',
-    width: 20,
+  // 説明画像右上の × ボタン
+  notificationDescClose: {
+    position: 'absolute',
+    top: 4,
+    right: 6,
+    padding: 6,
   },
-  notificationHintText: {
+  notificationDescCloseText: {
     fontSize: 14,
-    color: '#c6c6db',
+    color: 'rgba(255,255,255,0.85)',
   },
-  notificationHintFooter: {
-    fontSize: 14,
-    color: '#c6c6db',
-    marginTop: 6,
-    textAlign: 'center',
+  // トグル画像ボタンの共通ラッパー
+  notificationToggleButton: {
+    width: NOTIF_IMG_W,
+    alignSelf: 'center',
+    marginBottom: 10,
   },
-  notificationButtons: {
-    flexDirection: 'column',
-  },
-  notificationButton: {
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    marginBottom: 8,
-  },
-  notificationButtonActive: {
-    borderColor: '#e33',
-  },
-  notificationButtonText: {
-    fontSize: 15,
-    color: '#c6c6db',
-  },
-  notificationButtonActiveText: {
-    color: '#ff6b6b',
+  // ボタン画像本体（Figma: 196 × 35 px 相当、アスペクト比を維持）
+  notificationToggleImage: {
+    width: NOTIF_IMG_W,
+    height: undefined,
+    aspectRatio: 196 / 35,
+    resizeMode: 'contain' as const,
   },
 
   // ── 音量設定 ──────────────────────────────────────────────────────────────

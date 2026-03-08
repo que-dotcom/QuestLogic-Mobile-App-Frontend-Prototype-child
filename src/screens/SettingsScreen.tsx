@@ -7,6 +7,7 @@ import {
   Switch,
   Alert,
   Image,
+  ImageBackground,
   Modal,
   TextInput,
   Dimensions,
@@ -52,6 +53,16 @@ const STORAGE_KEYS = {
   bgmVolume: 'settings_bgmVolume',
   seVolume: 'settings_seVolume',
 } as const;
+
+// ─── タブヘッダー画像マップ ────────────────────────────────────────────────────
+
+const SECTION_HEADER_IMAGES: Record<SectionKey, ReturnType<typeof require>> = {
+  notification: require('../../asset/settings/images/Notification settings.png'),
+  volume: require('../../asset/settings/images/BGM Settings.png'),
+  logout: require('../../asset/settings/images/Logout.png'),
+  howto: require('../../asset/settings/images/How to use.png'),
+  about: require('../../asset/settings/images/credit.png'),
+};
 
 // ─── How-to 画像マップ ───────────────────────────────────────────────────────
 // asset/settings/images/ 配下の画像を参照する。
@@ -598,8 +609,13 @@ export default function SettingsScreen() {
   // ── レンダリング ──────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.wrapper}>
+    <ImageBackground
+      source={require('../../asset/settings/images/background screen.png.png')}
+      style={styles.bgImage}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={styles.wrapper}>
         {/* トップバー（ユーザー名表示・編集） */}
         <View style={styles.topBar}>
           <View style={styles.topCharacterPlaceholder} />
@@ -609,7 +625,11 @@ export default function SettingsScreen() {
             <AppText style={styles.topTitle}>{userName}</AppText>
           </TouchableOpacity>
 
-          <AppText style={styles.topEditIcon}>✎</AppText>
+          <Image
+            source={require('../../asset/settings/images/edit-alt.png')}
+            style={styles.topEditIconImage}
+            resizeMode="contain"
+          />
         </View>
 
         {/* ユーザー名編集モーダル */}
@@ -661,15 +681,15 @@ export default function SettingsScreen() {
                   style={styles.sectionHeader}
                   activeOpacity={0.8}
                 >
-                  <View style={styles.sectionTitleRow}>
-                    <View style={styles.iconWrapper}>
-                      <AppText style={styles.sectionIcon}>{section.icon}</AppText>
-                    </View>
-                    <AppText style={styles.sectionTitle}>{section.label}</AppText>
-                  </View>
-                  <AppText style={[styles.sectionArrow, isOpen && styles.sectionArrowOpen]}>
-                    ▾
-                  </AppText>
+                  <Image
+                    source={SECTION_HEADER_IMAGES[section.key]}
+                    style={
+                      section.key === 'about'
+                        ? styles.tabImageCredit
+                        : styles.tabImageNormal
+                    }
+                    resizeMode="contain"
+                  />
                 </TouchableOpacity>
                 {isOpen && (
                   <View style={styles.sectionBody}>{renderSectionBody(section.key)}</View>
@@ -678,8 +698,9 @@ export default function SettingsScreen() {
             );
           })}
         </ScrollView>
-      </View>
-    </SafeAreaView>
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -687,9 +708,12 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   // ── レイアウト基盤 ─────────────────────────────────────────────────────────
+  bgImage: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: '#0a0a14',
+    backgroundColor: 'transparent',
   },
   wrapper: {
     flex: 1,
@@ -702,9 +726,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    backgroundColor: '#0d0d18',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'transparent',
   },
   topCharacterPlaceholder: {
     width: 42,
@@ -730,6 +752,10 @@ const styles = StyleSheet.create({
   topEditIcon: {
     fontSize: 18,
     color: 'rgba(255,255,255,0.85)',
+  },
+  topEditIconImage: {
+    width: 28,
+    height: 28,
   },
 
   // ── ユーザー名編集モーダル ─────────────────────────────────────────────────
@@ -800,47 +826,22 @@ const styles = StyleSheet.create({
   },
   sectionContainer: {
     marginBottom: 10,
-    borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    padding: 0,
+    overflow: 'hidden',
   },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // 通常タブの画像（横幅いっぱいに表示）
+  tabImageNormal: {
+    width: '100%',
+    height: 56,
   },
-  iconWrapper: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  sectionIcon: {
-    fontSize: 18,
-    color: '#d8d8f0',
-  },
-  sectionTitle: {
-    fontSize: 15,
-    color: '#e3e3ff',
-  },
-  sectionArrow: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  sectionArrowOpen: {
-    transform: [{ rotate: '180deg' }],
-    color: 'rgba(255,255,255,0.85)',
+  // credit.png は小さめなので引き延ばさず左揃えで表示
+  tabImageCredit: {
+    width: 200,
+    height: 44,
+    alignSelf: 'flex-start',
   },
   sectionBody: {
     borderTopWidth: 1,

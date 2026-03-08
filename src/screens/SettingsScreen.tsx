@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Switch,
   Alert,
   Image,
   ImageBackground,
@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
@@ -53,7 +54,16 @@ const STORAGE_KEYS = {
   seEnabled: 'settings_seEnabled',
   bgmVolume: 'settings_bgmVolume',
   seVolume: 'settings_seVolume',
+  bgmCategory: 'settings_bgmCategory',
 } as const;
+
+type BgmCategory = 'battle' | 'stylish' | 'relaxing';
+
+const BGM_CATEGORIES: Array<{ key: BgmCategory; label: string }> = [
+  { key: 'battle', label: 'レトロ戦闘風に変更' },
+  { key: 'stylish', label: 'レトロおしゃれ風に変更' },
+  { key: 'relaxing', label: 'レトロやすらぎ風に変更' },
+];
 
 // ─── タブヘッダー画像マップ ────────────────────────────────────────────────────
 
@@ -213,6 +223,12 @@ export default function SettingsScreen() {
   const [seEnabled, setSeEnabled] = useState(true);
   const [bgmVolume, setBgmVolume] = useState(0.8);
   const [seVolume, setSeVolume] = useState(0.6);
+  const [bgmCategoryOpen, setBgmCategoryOpen] = useState(false);
+  const [selectedBgmCategory, setSelectedBgmCategory] = useState<BgmCategory>('relaxing');
+
+  // BGM 再生管理
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const bgmFadeAnim = useRef(new Animated.Value(bgmEnabled ? 1 : 0)).current;
 
   // 使い方モーダル
   const [howtoModalVisible, setHowtoModalVisible] = useState(false);
@@ -259,6 +275,57 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadStoredSettings();
   }, []);
+
+  // bgmEnabled が変化するたびに音量インジケーターをアニメーション
+  useEffect(() => {
+    Animated.timing(bgmFadeAnim, {
+      toValue: bgmEnabled ? 1 : 0,
+      duration: 450,
+      useNativeDriver: true,
+    }).start();
+  }, [bgmEnabled]);
+
+  // アンマウント時にサウンドリソースを解放
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  // ── BGM 再生ハンドラ ─────────────────────────────────────────────────────
+
+  const handleBgmPlay = async () => {
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      if (!soundRef.current) {
+        const { sound } = await Audio.Sound.createAsync(
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('../../asset/settings/BGM/moonlit.free204.wav'),
+          { isLooping: true }
+        );
+        soundRef.current = sound;
+      }
+      await soundRef.current.playAsync();
+      setBgmEnabled(true);
+      persistValue(STORAGE_KEYS.bgmEnabled, true);
+    } catch (e) {
+      console.warn('[BGM] playAsync failed:', e);
+    }
+  };
+
+  const handleBgmStop = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+      }
+      setBgmEnabled(false);
+      persistValue(STORAGE_KEYS.bgmEnabled, false);
+    } catch (e) {
+      console.warn('[BGM] stopAsync failed:', e);
+    }
+  };
 
   // ── セクション開閉（複数同時展開対応） ───────────────────────────────────
 
@@ -448,9 +515,7 @@ export default function SettingsScreen() {
                   style={styles.notificationDescClose}
                   onPress={() => setShowNotificationDesc(false)}
                   activeOpacity={0.7}
-                >
-                  <AppText style={styles.notificationDescCloseText}>✕</AppText>
-                </TouchableOpacity>
+                />
               </View>
             )}
 
@@ -492,89 +557,93 @@ export default function SettingsScreen() {
 
       case 'volume':
         return (
-          <>
-            <View style={styles.bodyRow}>
-              <AppText style={styles.bodyText}>BGM 有効</AppText>
-              <Switch
-                value={bgmEnabled}
-                onValueChange={(value) => {
-                  setBgmEnabled(value);
-                  persistValue(STORAGE_KEYS.bgmEnabled, value);
-                }}
-                trackColor={{ false: '#444', true: '#6d8cff' }}
-                thumbColor={bgmEnabled ? '#cce0ff' : '#999'}
-              />
-            </View>
-            <View style={[styles.bodyRow, !bgmEnabled && styles.disabledRow]}>
-              <AppText style={styles.bodyText}>BGM 音量</AppText>
-              <View style={styles.volumeControl}>
-                <TouchableOpacity
-                  style={styles.volumeButton}
-                  disabled={!bgmEnabled}
-                  onPress={() => {
-                    const next = Math.max(0, Math.round((bgmVolume - 0.1) * 10) / 10);
-                    setBgmVolume(next);
-                    persistValue(STORAGE_KEYS.bgmVolume, next);
-                  }}
-                >
-                  <AppText style={styles.volumeButtonText}>-</AppText>
-                </TouchableOpacity>
-                <AppText style={styles.volumeLabel}>{(bgmVolume * 100).toFixed(0)}%</AppText>
-                <TouchableOpacity
-                  style={styles.volumeButton}
-                  disabled={!bgmEnabled}
-                  onPress={() => {
-                    const next = Math.min(1, Math.round((bgmVolume + 0.1) * 10) / 10);
-                    setBgmVolume(next);
-                    persistValue(STORAGE_KEYS.bgmVolume, next);
-                  }}
-                >
-                  <AppText style={styles.volumeButtonText}>+</AppText>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.bgmSection}>
+
+            {/* ── BGMを流すボタン ─────────────────────────────── */}
+            <TouchableOpacity
+              style={styles.bgmPlayButton}
+              onPress={handleBgmPlay}
+              activeOpacity={0.8}
+            >
+              <AppText style={styles.bgmPlayButtonText}>BGMを流す</AppText>
+            </TouchableOpacity>
+
+            {/* ── 音量インジケーター（フェードアニメーション） ── */}
+            <View style={styles.bgmIndicatorWrapper}>
+              {/* 停止状態 */}
+              <Animated.View
+                style={[
+                  styles.bgmIndicatorLayer,
+                  { opacity: bgmFadeAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+                ]}
+              >
+                <Image
+                  source={require('../../asset/settings/images/BGM minimum.png')}
+                  style={styles.bgmIndicatorImage}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+              {/* 再生状態 */}
+              <Animated.View
+                style={[
+                  styles.bgmIndicatorLayer,
+                  styles.bgmIndicatorLayerAbsolute,
+                  { opacity: bgmFadeAnim },
+                ]}
+              >
+                <Image
+                  source={require('../../asset/settings/images/BGM maximum.png')}
+                  style={styles.bgmIndicatorImage}
+                  resizeMode="contain"
+                />
+              </Animated.View>
             </View>
 
-            <View style={styles.bodyRow}>
-              <AppText style={styles.bodyText}>SE 有効</AppText>
-              <Switch
-                value={seEnabled}
-                onValueChange={(value) => {
-                  setSeEnabled(value);
-                  persistValue(STORAGE_KEYS.seEnabled, value);
-                }}
-                trackColor={{ false: '#444', true: '#6d8cff' }}
-                thumbColor={seEnabled ? '#cce0ff' : '#999'}
-              />
-            </View>
-            <View style={[styles.bodyRow, !seEnabled && styles.disabledRow]}>
-              <AppText style={styles.bodyText}>SE 音量</AppText>
-              <View style={styles.volumeControl}>
-                <TouchableOpacity
-                  style={styles.volumeButton}
-                  disabled={!seEnabled}
-                  onPress={() => {
-                    const next = Math.max(0, Math.round((seVolume - 0.1) * 10) / 10);
-                    setSeVolume(next);
-                    persistValue(STORAGE_KEYS.seVolume, next);
-                  }}
-                >
-                  <AppText style={styles.volumeButtonText}>-</AppText>
-                </TouchableOpacity>
-                <AppText style={styles.volumeLabel}>{(seVolume * 100).toFixed(0)}%</AppText>
-                <TouchableOpacity
-                  style={styles.volumeButton}
-                  disabled={!seEnabled}
-                  onPress={() => {
-                    const next = Math.min(1, Math.round((seVolume + 0.1) * 10) / 10);
-                    setSeVolume(next);
-                    persistValue(STORAGE_KEYS.seVolume, next);
-                  }}
-                >
-                  <AppText style={styles.volumeButtonText}>+</AppText>
-                </TouchableOpacity>
+            {/* ── カテゴリドロップダウン ─────────────────────── */}
+            <TouchableOpacity
+              style={styles.bgmCategoryButton}
+              onPress={() => setBgmCategoryOpen((p) => !p)}
+              activeOpacity={0.8}
+            >
+              <AppText style={styles.bgmCategoryButtonText}>レトロゲーム風</AppText>
+              <AppText style={styles.bgmCategoryArrow}>{bgmCategoryOpen ? '∧' : '∨'}</AppText>
+            </TouchableOpacity>
+
+            {bgmCategoryOpen && (
+              <View style={styles.bgmCategoryList}>
+                {BGM_CATEGORIES.map(({ key, label }, index) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.bgmCategoryItem,
+                      selectedBgmCategory === key && styles.bgmCategoryItemSelected,
+                      index === BGM_CATEGORIES.length - 1 && styles.bgmCategoryItemLast,
+                    ]}
+                    onPress={() => {
+                      setSelectedBgmCategory(key);
+                      setBgmCategoryOpen(false);
+                      persistValue(STORAGE_KEYS.bgmCategory, key);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <AppText style={styles.bgmCategoryItemText}>{label}</AppText>
+                    <AppText style={styles.bgmCategoryItemArrow}>›</AppText>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </View>
-          </>
+            )}
+
+            {/* ── BGMを流さないボタン ──────────────────────────── */}
+            <TouchableOpacity
+              style={styles.bgmStopButton}
+              onPress={handleBgmStop}
+              activeOpacity={0.8}
+            >
+              <AppText style={styles.bgmStopButtonText}>BGMを流さない</AppText>
+              <AppText style={styles.bgmStopButtonArrow}>›</AppText>
+            </TouchableOpacity>
+
+          </View>
         );
 
       case 'howto':
@@ -967,7 +1036,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain' as const,
   },
 
-  // ── 音量設定 ──────────────────────────────────────────────────────────────
+  // ── 旧音量設定（互換性のため残す） ─────────────────────────────────────────
   volumeControl: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -992,6 +1061,121 @@ const styles = StyleSheet.create({
     color: '#c6c6db',
     minWidth: 42,
     textAlign: 'center',
+  },
+
+  // ── BGM セクション（新デザイン） ───────────────────────────────────────────
+  bgmSection: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  // BGMを流すボタン（赤ボーダー Outline スタイル）
+  bgmPlayButton: {
+    borderWidth: 1,
+    borderColor: '#d4031c',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    width: 196,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  bgmPlayButtonText: {
+    fontSize: 14,
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  // 音量インジケーターラッパー（2枚の画像を重ねてフェード）
+  bgmIndicatorWrapper: {
+    width: '100%',
+    height: 26,
+  },
+  bgmIndicatorLayer: {
+    width: '100%',
+    height: '100%',
+  },
+  bgmIndicatorLayerAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  bgmIndicatorImage: {
+    width: '100%',
+    height: '100%',
+  },
+  // カテゴリドロップダウンヘッダー
+  bgmCategoryButton: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    height: 30,
+  },
+  bgmCategoryButtonText: {
+    fontSize: 12,
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  bgmCategoryArrow: {
+    fontSize: 10,
+    color: '#fff',
+  },
+  // カテゴリリスト（展開時）
+  bgmCategoryList: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#fff',
+  },
+  bgmCategoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  bgmCategoryItemSelected: {
+    backgroundColor: 'rgba(212,3,28,0.12)',
+  },
+  bgmCategoryItemLast: {
+    borderBottomWidth: 0,
+  },
+  bgmCategoryItemText: {
+    fontSize: 12,
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  bgmCategoryItemArrow: {
+    fontSize: 14,
+    color: '#fff',
+  },
+  // BGMを流さないボタン（白ボーダー Outline スタイル）
+  bgmStopButton: {
+    borderWidth: 1,
+    borderColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    width: 196,
+    height: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  bgmStopButtonText: {
+    fontSize: 14,
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  bgmStopButtonArrow: {
+    fontSize: 14,
+    color: '#fff',
   },
 
   // ── 使い方セクション ──────────────────────────────────────────────────────

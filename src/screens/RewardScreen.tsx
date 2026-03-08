@@ -479,7 +479,7 @@ export default function RewardScreen() {
                 style={styles.adviceBackBtnBg}
                 resizeMode="stretch"
               >
-                <AppText style={styles.adviceBackBtnText}>戻る ＞</AppText>
+                <AppText style={styles.adviceBackBtnText}></AppText>
               </ImageBackground>
             </TouchableOpacity>
           </View>

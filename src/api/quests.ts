@@ -17,6 +17,7 @@ export interface SubmitQuestParams {
   afterImage: UploadImageFile;
   subject?: string;
   topic?: string;
+  userName?: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export interface SubmitQuestParams {
  * - afterImage
  * - subject (任意)
  * - topic (任意)
+ * - userName (任意)
  *
  * childId / familyId は JWT から解決されるため送付しない。
  */
@@ -52,12 +54,14 @@ export const submitQuest = async (
 
   if (params.subject) formData.append("subject", params.subject);
   if (params.topic) formData.append("topic", params.topic);
+  if (params.userName) formData.append("userName", params.userName);
 
   const response = await apiClient.post<SubmitQuestResponse>(
     "/quests/submit",
     formData,
     {
       headers: { "Content-Type": "multipart/form-data" },
+      transformRequest: [(data) => data],
     }
   );
   return response.data;

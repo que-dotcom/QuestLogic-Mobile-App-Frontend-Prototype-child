@@ -23,6 +23,7 @@ import AppText from '../components/AppText';
 import { RootTabParamList } from '../navigation/AppNavigator';
 import { useHomework } from '../context/HomeworkContext';
 import { useAdvice } from '../context/AdviceContext';
+import { useAuth } from '../context/AuthContext';
 import { submitQuest } from '../api/quests';
 import { getApiErrorMessage } from '../api/client';
 import type { SubmitQuestResponse } from '../types/api';
@@ -114,6 +115,7 @@ const GRADE = '中学1年生';
 
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
+  const { user } = useAuth();
   const { setHomework } = useHomework();
   const {
     setHasNewAdvice,
@@ -216,7 +218,7 @@ export default function CameraScreen() {
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
     if (!result.canceled) {
@@ -241,7 +243,7 @@ export default function CameraScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
     if (!result.canceled) {
@@ -305,6 +307,7 @@ export default function CameraScreen() {
         afterImage: buildUploadImage(afterPhotoUri, 'after.jpg'),
         subject: selectedSubject,
         topic: trimmedHomeworkName,
+        userName: user?.name || 'お子様',
       });
 
       if (!isMountedRef.current) return;

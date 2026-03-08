@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   StyleSheet,
   ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
 import { getTitleByExp } from '../utils/titleHelper';
@@ -16,24 +17,20 @@ import MainActionArea from '../components/MainActionArea';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
-/** プレイヤーのステータス値。将来はバックエンドから取得してこの状態を更新する。 */
-interface PlayerStatus {
-  gameTime: number;
-  smartphoneTime: number;
-  level: number;
-}
-
 export default function HomeScreen({ navigation }: Props) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUser();
+    }, [refreshUser])
+  );
 
   const userName = user?.name || 'ゲスト';
   const exp = user?.exp || 0;
-
-  const [playerStatus, setPlayerStatus] = useState<PlayerStatus>({
-    gameTime: 60,
-    smartphoneTime: 60,
-    level: user?.level || 1,
-  });
+  const currentMinutes =
+    user?.currentMinutes ?? (user?.currentPoints ?? 0) * (user?.minutesPerPoint ?? 0);
+  const currentLevel = user?.level || 1;
 
   const title = getTitleByExp(exp);
   const { homework } = useHomework();
@@ -55,9 +52,9 @@ export default function HomeScreen({ navigation }: Props) {
 
           {/* B. ステータスバー + バー画像ラベル */}
           <StatusBars
-            level={playerStatus.level}
-            gameLimitMin={playerStatus.gameTime}
-            smartphoneLimitMin={playerStatus.smartphoneTime}
+            level={currentLevel}
+            gameLimitMin={currentMinutes}
+            smartphoneLimitMin={currentMinutes}
           />
 
           {/* C. メインエリア（地図/羊皮紙） */}

@@ -6,6 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { saveToken, getToken, removeToken } from "../utils/tokenStorage";
+import { getCurrentUser } from "../api/users";
 import type { User } from "../types/api";
 
 // ============================================================
@@ -24,6 +25,8 @@ interface AuthActions {
   login: (token: string, user: User) => Promise<void>;
   /** ログアウト時: トークンをSecureStoreから削除しStateをクリアする */
   logout: () => Promise<void>;
+  /** バックエンドから最新のユーザー情報を再取得する */
+  refreshUser: () => Promise<User | null>;
 }
 
 type AuthContextValue = AuthState & AuthActions;
@@ -45,6 +48,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    try {
+      const response = await getCurrentUser();
+      setUser(response.data);
+      return response.data;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // アプリ起動時: SecureStoreにトークンが残っていれば復元する
   useEffect(() => {
     const restoreToken = async () => {
@@ -52,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const stored = await getToken();
         if (stored) {
           setToken(stored);
-          // TODO: stored トークンで GET /users/me 等を叩き、user情報を復元する
+          await refreshUser();
         }
       } catch {
         // トークン読み込み失敗時は未認証のままにする
@@ -62,13 +75,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     restoreToken();
-  }, []);
+  }, [refreshUser]);
 
   const login = useCallback(async (newToken: string, newUser: User) => {
     await saveToken(newToken);
     setToken(newToken);
     setUser(newUser);
-  }, []);
+    await refreshUser();
+  }, [refreshUser]);
 
   const logout = useCallback(async () => {
     await removeToken();
@@ -85,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         isLoading,
         login,
         logout,
+        refreshUser,
       }}
     >
       {children}

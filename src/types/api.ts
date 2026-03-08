@@ -14,6 +14,8 @@ export interface User {
   level: number;
   exp: number;
   currentPoints: number;
+  minutesPerPoint?: number;
+  currentMinutes?: number;
   grade: string | null;
   specialty: string | null;
   avatarUrl: string | null;
@@ -107,6 +109,10 @@ export interface ConsumePointsResponse extends BaseResponse {
   remainingPoints: number;
   remainingMinutes: number;
   minutesPerPoint: number;
+}
+
+export interface GetCurrentUserResponse extends BaseResponse {
+  data: User;
 }
 
 // ============================================================

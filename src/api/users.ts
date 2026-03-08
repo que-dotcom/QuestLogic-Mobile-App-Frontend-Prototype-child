@@ -7,7 +7,17 @@ import type {
   JoinFamilyResponse,
   ConsumePointsRequest,
   ConsumePointsResponse,
+  GetCurrentUserResponse,
 } from "../types/api";
+
+/**
+ * GET /api/users/me
+ * 現在ログイン中のユーザー情報を取得する。
+ */
+export const getCurrentUser = async (): Promise<GetCurrentUserResponse> => {
+  const response = await apiClient.get<GetCurrentUserResponse>("/users/me");
+  return response.data;
+};
 
 /**
  * PUT /api/users/profile

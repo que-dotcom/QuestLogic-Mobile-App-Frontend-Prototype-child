@@ -54,7 +54,7 @@ const SUBJECT_ICONS: Record<'国語' | '数学' | '社会' | '理科' | '英語'
 
 const FIXED_GRADE = '小学3年生';
 const EMPTY_ADVICE_TEXT = 'まだAIアドバイスはありません。';
-const EMPTY_HISTORY_TEXT = 'まだリワード履歴はありません。';
+const EMPTY_HISTORY_TEXT = 'まだ履歴がありません。';
 const HISTORY_LOADING_TEXT = 'リワード履歴を読み込み中です。';
 const DEFAULT_SUBJECT_ICON = require('../../asset/reward/images/national language.png');
 
@@ -108,15 +108,36 @@ function mapHistoryEntryToRewardItem(entry: RewardHistoryEntry): RewardItem {
 function mapQuestToRewardItem(
   quest: Quest,
   historyEntry?: RewardHistoryEntry
-): RewardItem {
+): RewardItem | null {
+  const subject = historyEntry?.subject ?? quest.subject;
+  const topic = historyEntry?.topic ?? quest.topic;
+
+  if (quest.status !== 'COMPLETED') {
+    return null;
+  }
+
+  if (!subject || !subject.trim()) {
+    return null;
+  }
+
   return {
     id: quest.id,
-    subject: historyEntry?.subject ?? quest.subject ?? 'その他',
+    subject,
     grade: FIXED_GRADE,
-    homeworkName: historyEntry?.topic ?? quest.topic ?? '宿題名未設定',
+    homeworkName: topic && topic.trim() ? topic.trim() : '宿題名未設定',
     timestamp: new Date(quest.createdAt),
     rewardText: toRewardText(quest.earnedPoints ?? historyEntry?.earnedPoints),
   };
+}
+
+function getQuestAdviceText(quest?: Quest): string | null {
+  const adviceText = quest?.aiResult?.feedback_to_child ?? quest?.aiResult?.summary ?? null;
+
+  if (!adviceText || !adviceText.trim()) {
+    return null;
+  }
+
+  return adviceText.trim();
 }
 
 // ──────────────────────────────────────────
@@ -155,12 +176,18 @@ function ListHeader({
 // 履歴アイテム コンポーネント
 // ──────────────────────────────────────────
 
-function RewardListItem({ item }: { item: RewardItem }) {
+function RewardListItem({
+  item,
+  onPress,
+}: {
+  item: RewardItem;
+  onPress: () => void;
+}) {
   const iconSource = getSubjectIcon(item.subject);
   const timeText = formatTimeAgo(item.timestamp);
 
   return (
-    <View style={itemStyles.row}>
+    <TouchableOpacity style={itemStyles.row} onPress={onPress} activeOpacity={0.75}>
       <Image
         source={iconSource}
         style={itemStyles.subjectIcon}
@@ -176,7 +203,7 @@ function RewardListItem({ item }: { item: RewardItem }) {
         <AppText style={itemStyles.expText}>{item.rewardText}</AppText>
         <View style={itemStyles.expDivider} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -189,6 +216,7 @@ export default function RewardScreen() {
   const [showAdvice, setShowAdvice] = useState(false);
   /** アドバイス画面を開いた時点で新着だった場合のみ true → att.png を表示 */
   const [showAttIcon, setShowAttIcon] = useState(false);
+  const [selectedRewardItemId, setSelectedRewardItemId] = useState<string | null>(null);
   const [questHistory, setQuestHistory] = useState<Quest[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(null);
@@ -213,10 +241,15 @@ export default function RewardScreen() {
       setIsExpanded(false);
       setShowAdvice(true);
       setShowAttIcon(true);
+      setSelectedRewardItemId(null);
       setOpenAdviceDirectly(false);
       setHasNewAdvice(false); // 既読化
     }
   }, [openAdviceDirectly, setHasNewAdvice, setOpenAdviceDirectly]);
+
+  const questMap = useMemo(() => {
+    return new Map(questHistory.map((quest) => [quest.id, quest]));
+  }, [questHistory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -250,21 +283,21 @@ export default function RewardScreen() {
     }, [])
   );
 
-  const adviceText = useMemo(() => {
-    if (latestAdviceText && latestAdviceText.trim()) {
-      return latestAdviceText.trim();
-    }
-    return EMPTY_ADVICE_TEXT;
-  }, [latestAdviceText]);
+  const latestQuestWithAdvice = useMemo(() => {
+    return [...questHistory]
+      .filter((quest) => getQuestAdviceText(quest))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  }, [questHistory]);
 
-  /** adviceText を 20 文字ずつに分割した行配列 */
-  const adviceLines = useMemo(() => splitTextToLines(adviceText), [adviceText]);
+  const latestQuestAdviceText = useMemo(() => {
+    return getQuestAdviceText(latestQuestWithAdvice);
+  }, [latestQuestWithAdvice]);
 
   const rewardItems = useMemo(() => {
     const historyMap = new Map(rewardHistory.map((entry) => [entry.id, entry]));
-    const apiItems = questHistory.map((quest) =>
-      mapQuestToRewardItem(quest, historyMap.get(quest.id))
-    );
+    const apiItems = questHistory
+      .map((quest) => mapQuestToRewardItem(quest, historyMap.get(quest.id)))
+      .filter((item): item is RewardItem => item !== null);
     const apiIds = new Set(questHistory.map((quest) => quest.id));
     const localOnlyItems = rewardHistory
       .filter((entry) => !apiIds.has(entry.id))
@@ -275,6 +308,67 @@ export default function RewardScreen() {
     );
   }, [questHistory, rewardHistory]);
 
+  const selectedRewardItem = useMemo(() => {
+    if (!selectedRewardItemId) {
+      return null;
+    }
+
+    return rewardItems.find((item) => item.id === selectedRewardItemId) ?? null;
+  }, [rewardItems, selectedRewardItemId]);
+
+  const selectedQuest = useMemo(() => {
+    if (!selectedRewardItemId) {
+      return null;
+    }
+
+    return questMap.get(selectedRewardItemId) ?? null;
+  }, [questMap, selectedRewardItemId]);
+
+  const latestAdviceTimestamp = useMemo(() => {
+    if (latestQuestWithAdvice?.createdAt) {
+      return latestQuestWithAdvice.createdAt;
+    }
+
+    return rewardItems[0]?.timestamp ?? null;
+  }, [latestQuestWithAdvice, rewardItems]);
+
+  const selectedAdviceTimestamp = useMemo(() => {
+    if (selectedQuest?.createdAt) {
+      return selectedQuest.createdAt;
+    }
+
+    return selectedRewardItem?.timestamp ?? null;
+  }, [selectedQuest, selectedRewardItem]);
+
+  const displayedAdviceTimestamp = selectedRewardItemId
+    ? selectedAdviceTimestamp
+    : latestAdviceTimestamp;
+
+  const adviceDateLabel = useMemo(() => {
+    if (!displayedAdviceTimestamp) {
+      return '履歴なし';
+    }
+
+    return formatTimeAgo(displayedAdviceTimestamp);
+  }, [displayedAdviceTimestamp]);
+
+  const adviceText = useMemo(() => {
+    if (selectedRewardItemId) {
+      return getQuestAdviceText(selectedQuest ?? undefined) ?? EMPTY_ADVICE_TEXT;
+    }
+
+    if (latestAdviceText && latestAdviceText.trim()) {
+      return latestAdviceText.trim();
+    }
+    if (latestQuestAdviceText) {
+      return latestQuestAdviceText;
+    }
+    return EMPTY_ADVICE_TEXT;
+  }, [latestAdviceText, latestQuestAdviceText, selectedQuest, selectedRewardItemId]);
+
+  /** adviceText を 20 文字ずつに分割した行配列 */
+  const adviceLines = useMemo(() => splitTextToLines(adviceText), [adviceText]);
+
   const previewRewardItems = useMemo(() => rewardItems.slice(0, 5), [rewardItems]);
 
   const toggle = () => setIsExpanded(v => !v);
@@ -284,17 +378,35 @@ export default function RewardScreen() {
     setIsExpanded(false);
     setShowAdvice(true);
     setShowAttIcon(isNew);
+    setSelectedRewardItemId(null);
     if (isNew) {
       setHasNewAdvice(false); // 既読化
     }
   };
 
-  const handleCloseAdvice = () => {
-    setShowAdvice(false);
+  const handleOpenHistoryAdvice = (item: RewardItem) => {
+    setIsExpanded(false);
+    setSelectedRewardItemId(item.id);
+    setShowAdvice(true);
     setShowAttIcon(false);
   };
 
+  const handleCloseAdvice = () => {
+    setShowAdvice(false);
+    setShowAttIcon(false);
+    setSelectedRewardItemId(null);
+  };
+
   const renderPreviewRewards = () => {
+    if (previewRewardItems.length > 0) {
+      return previewRewardItems.map((item, index) => (
+        <View key={item.id}>
+          {index > 0 && <View style={styles.separator} />}
+          <RewardListItem item={item} onPress={() => handleOpenHistoryAdvice(item)} />
+        </View>
+      ));
+    }
+
     if (isHistoryLoading) {
       return <AppText style={styles.infoText}>{HISTORY_LOADING_TEXT}</AppText>;
     }
@@ -303,16 +415,7 @@ export default function RewardScreen() {
       return <AppText style={styles.infoText}>{historyErrorMessage}</AppText>;
     }
 
-    if (previewRewardItems.length === 0) {
-      return <AppText style={styles.infoText}>{EMPTY_HISTORY_TEXT}</AppText>;
-    }
-
-    return previewRewardItems.map((item, index) => (
-      <View key={item.id}>
-        {index > 0 && <View style={styles.separator} />}
-        <RewardListItem item={item} />
-      </View>
-    ));
+    return <AppText style={styles.infoText}>{EMPTY_HISTORY_TEXT}</AppText>;
   };
 
   return (
@@ -338,7 +441,7 @@ export default function RewardScreen() {
               {/* [今日] + att.png（スクロールする）。att.png は新着時のみ表示 */}
               <View style={styles.adviceDateRow}>
                 <AppText style={styles.adviceTodayBracket}>[</AppText>
-                <AppText style={styles.adviceTodayLabel}>今日</AppText>
+                <AppText style={styles.adviceTodayLabel}>{adviceDateLabel}</AppText>
                 <AppText style={styles.adviceTodayBracket}>]</AppText>
                 {showAttIcon && (
                   <Image
@@ -394,7 +497,9 @@ export default function RewardScreen() {
                 <FlatList
                   data={rewardItems}
                   keyExtractor={item => item.id}
-                  renderItem={({ item }) => <RewardListItem item={item} />}
+                  renderItem={({ item }) => (
+                    <RewardListItem item={item} onPress={() => handleOpenHistoryAdvice(item)} />
+                  )}
                   ItemSeparatorComponent={() => <View style={styles.separator} />}
                   contentContainerStyle={styles.flatListContent}
                   showsVerticalScrollIndicator={false}

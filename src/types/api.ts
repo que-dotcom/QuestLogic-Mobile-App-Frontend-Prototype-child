@@ -134,6 +134,7 @@ export interface Quest {
   beforeImageUrl?: string;
   afterImageUrl?: string;
   subject?: string;
+  topic?: string;
   aiResult?: AiResult;
   child?: {
     name: string;

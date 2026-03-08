@@ -99,7 +99,12 @@ const GRADE = '中学1年生';
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const { setHomework } = useHomework();
-  const { setHasNewAdvice, setOpenAdviceDirectly } = useAdvice();
+  const {
+    setHasNewAdvice,
+    setOpenAdviceDirectly,
+    setLatestAdviceText,
+    prependRewardHistory,
+  } = useAdvice();
 
   const [homeworkName, setHomeworkName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -287,6 +292,17 @@ export default function CameraScreen() {
       });
 
       if (!isMountedRef.current) return;
+      const adviceText =
+        result.data.aiResult.feedback_to_child ?? result.data.aiResult.summary ?? null;
+
+      setLatestAdviceText(adviceText);
+      prependRewardHistory({
+        id: result.data.id,
+        subject: selectedSubject,
+        topic: trimmedHomeworkName,
+        createdAt: new Date().toISOString(),
+        earnedPoints: result.earnedPoints,
+      });
       setSubmitResult(result);
       setIsBackendError(false);
       setSubmitErrorMessage(null);
@@ -386,15 +402,6 @@ export default function CameraScreen() {
                 {`振り返り：${isBackendError ? '' : renderStars(submitResult?.data?.aiResult?.score_breakdown?.review ?? 0)}`}
               </AppText>
             </View>
-
-            {!isBackendError && submitResult?.data?.aiResult?.feedback_to_child && (
-              <View style={styles.feedbackBox}>
-                <AppText style={styles.feedbackTitle}>AIからのひとこと</AppText>
-                <AppText style={styles.feedbackText}>
-                  {submitResult.data.aiResult.feedback_to_child}
-                </AppText>
-              </View>
-            )}
 
             {/* AIアドバイスボタン画像（エラー時は Button M2.png に切り替え） */}
             <TouchableOpacity
@@ -1032,27 +1039,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 12,
     paddingHorizontal: 20,
-  },
-  feedbackBox: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(20, 20, 20, 0.45)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  feedbackTitle: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  feedbackText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    lineHeight: 22,
-    textAlign: 'left',
   },
 
   // ボタン画像共通：中央揃えのラッパー

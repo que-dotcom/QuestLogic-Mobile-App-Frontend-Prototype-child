@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,7 @@ import {
   ImageSourcePropType,
   Dimensions,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 /** Figma寸法 291×96 に合わせ、画面幅の75%をボタン幅として固定 */
@@ -18,6 +19,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
 import { formatTimeAgo } from '../utils/timeHelper';
 import { useAdvice } from '../context/AdviceContext';
+import type { RewardHistoryEntry } from '../context/AdviceContext';
+import { getQuests } from '../api/quests';
+import { getApiErrorMessage } from '../api/client';
+import type { Quest } from '../types/api';
 
 /** CustomTabBar の高さと合わせる */
 const TAB_BAR_HEIGHT = 83;
@@ -26,22 +31,20 @@ const TAB_BAR_HEIGHT = 83;
 // 型定義
 // ──────────────────────────────────────────
 
-type Subject = '国語' | '数学' | '社会' | '理科' | '英語';
-
 interface RewardItem {
   id: string;
-  subject: Subject;
+  subject: string;
   grade: string;
   homeworkName: string;
   timestamp: Date;
-  exp: string;
+  rewardText: string;
 }
 
 // ──────────────────────────────────────────
 // 定数
 // ──────────────────────────────────────────
 
-const SUBJECT_ICONS: Record<Subject, ImageSourcePropType> = {
+const SUBJECT_ICONS: Record<'国語' | '数学' | '社会' | '理科' | '英語', ImageSourcePropType> = {
   国語: require('../../asset/reward/images/national language.png'),
   数学: require('../../asset/reward/images/mathematics.png'),
   社会: require('../../asset/reward/images/society.png'),
@@ -49,38 +52,15 @@ const SUBJECT_ICONS: Record<Subject, ImageSourcePropType> = {
   英語: require('../../asset/reward/images/english.png'),
 };
 
-/** ダミーデータ: timestampはモジュールロード時の現在時刻からの相対値 */
-const buildDummyRewards = (): RewardItem[] => {
-  const now = new Date();
-  const hoursAgo = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000);
-  const daysAgo = (d: number) => new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
-
-  return [
-    { id: '1',  subject: '理科', grade: '6年', homeworkName: 'てこのはたらき',       timestamp: hoursAgo(23), exp: '+15EXP' },
-    { id: '2',  subject: '国語', grade: '6年', homeworkName: '竹取物語',             timestamp: daysAgo(2),  exp: '+10EXP' },
-    { id: '3',  subject: '社会', grade: '6年', homeworkName: '日本国憲法',           timestamp: daysAgo(3),  exp: '+10EXP' },
-    { id: '4',  subject: '英語', grade: '6年', homeworkName: '過去形',               timestamp: daysAgo(5),  exp: '+20EXP' },
-    { id: '5',  subject: '数学', grade: '6年', homeworkName: '並べ方と組み合わせ方', timestamp: daysAgo(5),  exp: '+10EXP' },
-    { id: '6',  subject: '国語', grade: '6年', homeworkName: '漢字50問テスト',       timestamp: daysAgo(6),  exp: '+15EXP' },
-    { id: '7',  subject: '英語', grade: '6年', homeworkName: '単語練習',             timestamp: daysAgo(7),  exp: '+10EXP' },
-    { id: '8',  subject: '理科', grade: '6年', homeworkName: '月と太陽の位置関係',   timestamp: daysAgo(8),  exp: '+10EXP' },
-    { id: '9',  subject: '社会', grade: '6年', homeworkName: '江戸幕府の終わり',     timestamp: daysAgo(9),  exp: '+20EXP' },
-    { id: '10', subject: '数学', grade: '6年', homeworkName: '分数のかけ算',         timestamp: daysAgo(10), exp: '+10EXP' },
-    { id: '11', subject: '国語', grade: '6年', homeworkName: '俳句の世界',           timestamp: daysAgo(12), exp: '+10EXP' },
-    { id: '12', subject: '社会', grade: '6年', homeworkName: '縄文時代と弥生時代',   timestamp: daysAgo(14), exp: '+15EXP' },
-  ];
-};
-
-const DUMMY_REWARDS = buildDummyRewards();
+const FIXED_GRADE = '小学3年生';
+const EMPTY_ADVICE_TEXT = 'まだAIアドバイスはありません。';
+const EMPTY_HISTORY_TEXT = 'まだリワード履歴はありません。';
+const HISTORY_LOADING_TEXT = 'リワード履歴を読み込み中です。';
+const DEFAULT_SUBJECT_ICON = require('../../asset/reward/images/national language.png');
 
 // ──────────────────────────────────────────
-// AIアドバイス: バックエンドAPI想定ダミーデータ & テキスト分割
+// AIアドバイス: 実データ表示用ヘルパー
 // ──────────────────────────────────────────
-
-/** バックエンドから受け取るJSONレスポンスの型 */
-type AdviceApiResponse = {
-  adviceText: string;
-};
 
 /**
  * 1行あたりの文字数。バックエンドから受け取った長文を
@@ -95,6 +75,48 @@ function splitTextToLines(text: string, charsPerLine = ADVICE_CHARS_PER_LINE): s
     lines.push(text.slice(i, i + charsPerLine));
   }
   return lines;
+}
+
+function getSubjectIcon(subject?: string): ImageSourcePropType {
+  if (!subject) return DEFAULT_SUBJECT_ICON;
+  if (subject.includes('数学') || subject.includes('算数')) return SUBJECT_ICONS.数学;
+  if (subject.includes('理科')) return SUBJECT_ICONS.理科;
+  if (subject.includes('社会')) return SUBJECT_ICONS.社会;
+  if (subject.includes('英語')) return SUBJECT_ICONS.英語;
+  if (subject.includes('国語')) return SUBJECT_ICONS.国語;
+  return DEFAULT_SUBJECT_ICON;
+}
+
+function toRewardText(earnedPoints?: number): string {
+  if (typeof earnedPoints !== 'number' || Number.isNaN(earnedPoints)) {
+    return '--';
+  }
+  return `+${earnedPoints}PT`;
+}
+
+function mapHistoryEntryToRewardItem(entry: RewardHistoryEntry): RewardItem {
+  return {
+    id: entry.id,
+    subject: entry.subject,
+    grade: FIXED_GRADE,
+    homeworkName: entry.topic,
+    timestamp: new Date(entry.createdAt),
+    rewardText: toRewardText(entry.earnedPoints),
+  };
+}
+
+function mapQuestToRewardItem(
+  quest: Quest,
+  historyEntry?: RewardHistoryEntry
+): RewardItem {
+  return {
+    id: quest.id,
+    subject: historyEntry?.subject ?? quest.subject ?? 'その他',
+    grade: FIXED_GRADE,
+    homeworkName: historyEntry?.topic ?? quest.topic ?? '宿題名未設定',
+    timestamp: new Date(quest.createdAt),
+    rewardText: toRewardText(quest.earnedPoints ?? historyEntry?.earnedPoints),
+  };
 }
 
 // ──────────────────────────────────────────
@@ -134,7 +156,7 @@ function ListHeader({
 // ──────────────────────────────────────────
 
 function RewardListItem({ item }: { item: RewardItem }) {
-  const iconSource = SUBJECT_ICONS[item.subject];
+  const iconSource = getSubjectIcon(item.subject);
   const timeText = formatTimeAgo(item.timestamp);
 
   return (
@@ -151,7 +173,7 @@ function RewardListItem({ item }: { item: RewardItem }) {
         <AppText style={itemStyles.timeText}>{timeText}</AppText>
       </View>
       <View style={itemStyles.expBlock}>
-        <AppText style={itemStyles.expText}>{item.exp}</AppText>
+        <AppText style={itemStyles.expText}>{item.rewardText}</AppText>
         <View style={itemStyles.expDivider} />
       </View>
     </View>
@@ -167,8 +189,18 @@ export default function RewardScreen() {
   const [showAdvice, setShowAdvice] = useState(false);
   /** アドバイス画面を開いた時点で新着だった場合のみ true → att.png を表示 */
   const [showAttIcon, setShowAttIcon] = useState(false);
+  const [questHistory, setQuestHistory] = useState<Quest[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyErrorMessage, setHistoryErrorMessage] = useState<string | null>(null);
 
-  const { hasNewAdvice, setHasNewAdvice, openAdviceDirectly, setOpenAdviceDirectly } = useAdvice();
+  const {
+    hasNewAdvice,
+    setHasNewAdvice,
+    openAdviceDirectly,
+    setOpenAdviceDirectly,
+    latestAdviceText,
+    rewardHistory,
+  } = useAdvice();
 
   /**
    * CameraScreen の Button M から直接遷移してきた場合、
@@ -184,37 +216,66 @@ export default function RewardScreen() {
       setOpenAdviceDirectly(false);
       setHasNewAdvice(false); // 既読化
     }
-  }, [openAdviceDirectly]);
+  }, [openAdviceDirectly, setHasNewAdvice, setOpenAdviceDirectly]);
 
-  /**
-   * バックエンドAPIから受け取ることを想定したダミーデータ。
-   * 将来的には fetch / SWR 等で取得した値を setAdviceApiData に渡す。
-   */
-  const [adviceApiData] = useState<AdviceApiResponse>({
-    adviceText:
-      '〇〇さん、宿題お疲れ様でした！とても丁寧に字を書いていて、先生は感心しましたよ。' +
-      'ほとんどの問題に取り組めていて、頑張った証拠ですね。' +
-      '特に、問題2の①や問題3の①のように、Xを使った式を正しく作れているところは、' +
-      'よく理解できている証拠です。素晴らしい！' +
-      'ただ、いくつか気を付けてほしいことがあります。' +
-      '問題1の③と④は、少し難しかったかな？' +
-      '文章をもう一度よく読んで、何が聞かれているのか、' +
-      'どんな式になるのかをじっくり考えてみましょう。' +
-      'もし分からなくても、途中で考えたことやメモを書いてくれると、' +
-      '先生は〇〇さんがどこでつまずいているのかを理解して、' +
-      'もっと良いアドバイスができます。' +
-      'それから、問題2の②や問題3の②のように、' +
-      '答えを出す計算の途中の式も、忘れずに書くようにしてください。' +
-      '次からはぜひ意識してやってみましょうね。' +
-      '〇〇さんの努力がよく見えるので、' +
-      'おうちの方も「大切だよ」と言っていたことなので、',
-  });
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      const loadQuestHistory = async () => {
+        setIsHistoryLoading(true);
+        setHistoryErrorMessage(null);
+
+        try {
+          const response = await getQuests();
+          if (!isActive) return;
+          setQuestHistory(response.data ?? []);
+        } catch (error) {
+          if (!isActive) return;
+          setHistoryErrorMessage(
+            getApiErrorMessage(error, 'リワード履歴を取得できませんでした。')
+          );
+        } finally {
+          if (isActive) {
+            setIsHistoryLoading(false);
+          }
+        }
+      };
+
+      void loadQuestHistory();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
+  const adviceText = useMemo(() => {
+    if (latestAdviceText && latestAdviceText.trim()) {
+      return latestAdviceText.trim();
+    }
+    return EMPTY_ADVICE_TEXT;
+  }, [latestAdviceText]);
 
   /** adviceText を 20 文字ずつに分割した行配列 */
-  const adviceLines = useMemo(
-    () => splitTextToLines(adviceApiData.adviceText),
-    [adviceApiData.adviceText],
-  );
+  const adviceLines = useMemo(() => splitTextToLines(adviceText), [adviceText]);
+
+  const rewardItems = useMemo(() => {
+    const historyMap = new Map(rewardHistory.map((entry) => [entry.id, entry]));
+    const apiItems = questHistory.map((quest) =>
+      mapQuestToRewardItem(quest, historyMap.get(quest.id))
+    );
+    const apiIds = new Set(questHistory.map((quest) => quest.id));
+    const localOnlyItems = rewardHistory
+      .filter((entry) => !apiIds.has(entry.id))
+      .map(mapHistoryEntryToRewardItem);
+
+    return [...apiItems, ...localOnlyItems].sort(
+      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+    );
+  }, [questHistory, rewardHistory]);
+
+  const previewRewardItems = useMemo(() => rewardItems.slice(0, 5), [rewardItems]);
 
   const toggle = () => setIsExpanded(v => !v);
 
@@ -231,6 +292,27 @@ export default function RewardScreen() {
   const handleCloseAdvice = () => {
     setShowAdvice(false);
     setShowAttIcon(false);
+  };
+
+  const renderPreviewRewards = () => {
+    if (isHistoryLoading) {
+      return <AppText style={styles.infoText}>{HISTORY_LOADING_TEXT}</AppText>;
+    }
+
+    if (historyErrorMessage) {
+      return <AppText style={styles.infoText}>{historyErrorMessage}</AppText>;
+    }
+
+    if (previewRewardItems.length === 0) {
+      return <AppText style={styles.infoText}>{EMPTY_HISTORY_TEXT}</AppText>;
+    }
+
+    return previewRewardItems.map((item, index) => (
+      <View key={item.id}>
+        {index > 0 && <View style={styles.separator} />}
+        <RewardListItem item={item} />
+      </View>
+    ));
   };
 
   return (
@@ -304,14 +386,23 @@ export default function RewardScreen() {
           <View style={styles.expandedContainer}>
             <View style={styles.listContainerExpanded}>
               <ListHeader isExpanded onToggle={toggle} />
-              <FlatList
-                data={DUMMY_REWARDS}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => <RewardListItem item={item} />}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-                contentContainerStyle={styles.flatListContent}
-                showsVerticalScrollIndicator={false}
-              />
+              {isHistoryLoading ? (
+                <AppText style={styles.infoText}>{HISTORY_LOADING_TEXT}</AppText>
+              ) : historyErrorMessage ? (
+                <AppText style={styles.infoText}>{historyErrorMessage}</AppText>
+              ) : (
+                <FlatList
+                  data={rewardItems}
+                  keyExtractor={item => item.id}
+                  renderItem={({ item }) => <RewardListItem item={item} />}
+                  ItemSeparatorComponent={() => <View style={styles.separator} />}
+                  contentContainerStyle={styles.flatListContent}
+                  showsVerticalScrollIndicator={false}
+                  ListEmptyComponent={
+                    <AppText style={styles.infoText}>{EMPTY_HISTORY_TEXT}</AppText>
+                  }
+                />
+              )}
             </View>
           </View>
 
@@ -342,12 +433,7 @@ export default function RewardScreen() {
 
             <View style={styles.listContainer}>
               <ListHeader isExpanded={false} onToggle={toggle} />
-              {DUMMY_REWARDS.slice(0, 5).map((item, index) => (
-                <View key={item.id}>
-                  {index > 0 && <View style={styles.separator} />}
-                  <RewardListItem item={item} />
-                </View>
-              ))}
+              {renderPreviewRewards()}
             </View>
           </ScrollView>
         )}
@@ -420,6 +506,14 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingBottom: 40,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#ffffff',
+    letterSpacing: 1,
+    lineHeight: 22,
+    textAlign: 'center',
+    paddingVertical: 12,
   },
 
   // ── リストヘッダー共通 ───────────────────────────────────────────────────

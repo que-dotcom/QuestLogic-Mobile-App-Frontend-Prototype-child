@@ -12,7 +12,14 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0a0a14"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.raitsumugu.childapp"
     },
     "web": {},
     "scheme": "com.raitsumugu.child-app",

@@ -10,6 +10,9 @@ import type {
   UpdateAiSettingsRequest,
   UpdateAiSettingsResponse,
   GetDevicesResponse,
+  AddDeviceRequest,
+  AddDeviceResponse,
+  DeleteDeviceResponse,
 } from "../types/api";
 
 /**
@@ -92,5 +95,32 @@ export const updateAiSettings = async (
  */
 export const getDevices = async (): Promise<GetDevicesResponse> => {
   const response = await apiClient.get<GetDevicesResponse>("/family/devices");
+  return response.data;
+};
+
+/**
+ * POST /api/family/devices
+ * デバイスを追加する。Parent 専用。
+ */
+export const addDevice = async (
+  body: AddDeviceRequest
+): Promise<AddDeviceResponse> => {
+  const response = await apiClient.post<AddDeviceResponse>(
+    "/family/devices",
+    body
+  );
+  return response.data;
+};
+
+/**
+ * DELETE /api/family/devices/:id
+ * デバイスを削除する。Parent 専用。
+ */
+export const deleteDevice = async (
+  id: string
+): Promise<DeleteDeviceResponse> => {
+  const response = await apiClient.delete<DeleteDeviceResponse>(
+    `/family/devices/${id}`
+  );
   return response.data;
 };

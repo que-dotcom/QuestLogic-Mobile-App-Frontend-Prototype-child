@@ -80,7 +80,7 @@ export default function MainActionArea({
   return (
     <View style={styles.outerContainer}>
       <ImageBackground
-        source={require('../../asset/home/images/Map icon.png')}
+        source={require('../../asset/home/images/Map_icon.png')}
         style={styles.mapBackground}
         resizeMode="stretch"
       >
@@ -109,7 +109,7 @@ export default function MainActionArea({
             </AppText>
             <TouchableOpacity onPress={onRegisterPress} activeOpacity={0.75}>
               <Image
-                source={require('../../asset/home/images/Button S2.png')}
+                source={require('../../asset/home/images/Button_S2.png')}
                 style={styles.registerButtonImage}
                 resizeMode="contain"
               />

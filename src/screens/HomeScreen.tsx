@@ -42,7 +42,7 @@ export default function HomeScreen({ navigation }: Props) {
 
   return (
     <ImageBackground
-      source={require('../../asset/home/images/background screen.png')}
+      source={require('../../asset/home/images/background_screen.png')}
       style={styles.screenBackground}
       resizeMode="cover"
     >

@@ -3,11 +3,14 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   useCallback,
 } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { saveToken, getToken, removeToken } from "../utils/tokenStorage";
 import { getCurrentUser } from "../api/users";
+import { setUnauthorizedHandler } from "../api/client";
 import type { User } from "../types/api";
 
 // ============================================================
@@ -115,6 +118,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     restoreToken();
   }, [refreshUser]);
 
+  // AppState がバックグラウンドから復帰した際にユーザー情報を再同期する
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      "change",
+      (nextState: AppStateStatus) => {
+        if (
+          appStateRef.current !== "active" &&
+          nextState === "active" &&
+          token !== null
+        ) {
+          refreshUser();
+        }
+        appStateRef.current = nextState;
+      }
+    );
+    return () => subscription.remove();
+  }, [token, refreshUser]);
+
   const login = useCallback(async (newToken: string, newUser: User) => {
     await saveToken(newToken);
     setToken(newToken);
@@ -129,6 +151,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setToken(null);
     setUser(null);
   }, []);
+
+  // 401 受信時に logout を呼び出すよう client に登録する
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      logout();
+    });
+  }, [logout]);
 
   /**
    * 設定画面から呼び出す。

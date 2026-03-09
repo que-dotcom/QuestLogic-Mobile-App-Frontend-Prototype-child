@@ -17,14 +17,14 @@ const CHA_BAR_ASPECT_RATIO = 382 / 111;
 export default function HeaderProfile({ title, userName }: HeaderProfileProps) {
   return (
     <ImageBackground
-      source={require('../../asset/home/images/cha bar.png')}
+      source={require('../../asset/home/images/cha_bar.png')}
       style={styles.container}
       resizeMode="stretch"
     >
       {/* キャラクター画像（左側） */}
       <View style={styles.characterFrame}>
         <Image
-          source={require('../../asset/home/images/Default Character.png')}
+          source={require('../../asset/home/images/Default_Character.png')}
           style={styles.characterImage}
           resizeMode="contain"
         />

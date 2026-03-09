@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
+import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
 // ─── 型定義 ──────────────────────────────────────────────────────────────────
 
@@ -36,10 +36,12 @@ export function BGMProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying]               = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<BgmCategory>('relaxing');
 
-  // Sound オブジェクトは ref で保持（再レンダリングで破棄されない）
-  const soundRef    = useRef<Audio.Sound | null>(null);
   // 非同期ハンドラ内から常に最新のカテゴリを参照するための ref
   const categoryRef = useRef<BgmCategory>('relaxing');
+  const isPlayingRef = useRef(false);
+
+  // useAudioPlayer は null で初期化し、再生時に replace でソースを差し替える
+  const player = useAudioPlayer(null);
 
   // ── 起動時: AsyncStorage から設定を復元し、ON なら即座に再生 ──────────────
   useEffect(() => {
@@ -67,35 +69,18 @@ export function BGMProvider({ children }: { children: React.ReactNode }) {
     };
 
     restore();
-
-    // アプリ終了時にサウンドリソースを解放
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── 内部: ロード → 再生（常にアンロードから始める） ──────────────────────
+  // ── 内部: ソースを差し替えて再生 ─────────────────────────────────────────
 
   const loadAndPlay = async (category: BgmCategory) => {
-    // 既存サウンドを完全にアンロード
-    if (soundRef.current) {
-      await soundRef.current.unloadAsync();
-      soundRef.current = null;
-    }
-
-    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-
-    // shouldPlay: true でロードと同時に再生を開始（separate playAsync 不要）
-    const { sound } = await Audio.Sound.createAsync(
-      BGM_SOURCES[category],
-      { isLooping: true, shouldPlay: true }
-    );
-    soundRef.current = sound;
+    await setAudioModeAsync({ playsInSilentMode: true });
+    player.replace(BGM_SOURCES[category]);
+    player.loop = true;
+    player.play();
     setIsPlaying(true);
+    isPlayingRef.current = true;
   };
 
   // ── 公開 API ─────────────────────────────────────────────────────────────
@@ -114,12 +99,9 @@ export function BGMProvider({ children }: { children: React.ReactNode }) {
 
   const stop = async () => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
+      player.pause();
       setIsPlaying(false);
+      isPlayingRef.current = false;
       await AsyncStorage.setItem(STORAGE_KEY_ENABLED, JSON.stringify(false));
     } catch (e) {
       console.warn('[BGM] stop failed:', e);
@@ -132,7 +114,7 @@ export function BGMProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY_CATEGORY, JSON.stringify(category));
 
     // 再生中であれば新しい曲に切り替え
-    if (isPlaying) {
+    if (isPlayingRef.current) {
       try {
         await loadAndPlay(category);
         await AsyncStorage.setItem(STORAGE_KEY_ENABLED, JSON.stringify(true));

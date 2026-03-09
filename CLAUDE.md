@@ -14,7 +14,7 @@ React Native (Expo) で構築されたiOS/Android対応アプリ。
 - **ナビゲーション**: React Navigation (Bottom Tabs)
 - **ストレージ**: AsyncStorage / expo-secure-store
 - **HTTP**: axios
-- **音声**: expo-av
+- **音声**: expo-audio
 - **フォント**: @expo-google-fonts/dotgothic16
 
 ## プロジェクト構造

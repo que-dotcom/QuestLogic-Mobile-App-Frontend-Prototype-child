@@ -26,6 +26,7 @@ import { useAdvice } from '../context/AdviceContext';
 import { useAuth } from '../context/AuthContext';
 import { submitQuest } from '../api/quests';
 import { getApiErrorMessage } from '../api/client';
+import { compressImage } from '../utils/compressImage';
 import type { SubmitQuestResponse } from '../types/api';
 
 // 通知を受け取ったときの表示設定（フォアグラウンド時もアラートを表示）
@@ -36,6 +37,8 @@ try {
       shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
     }),
   });
 } catch (e) {
@@ -110,8 +113,6 @@ const buildUploadImage = (uri: string, fallbackName: string) => {
   };
 };
 
-// 学年は現状ハードコード。将来はユーザー情報から取得する
-const GRADE = '中学1年生';
 
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
@@ -302,9 +303,15 @@ export default function CameraScreen() {
     setIsScoring(true);
 
     try {
+      // 送信前に 4MB 以下へ圧縮（JPEG 変換 + リサイズ）
+      const [compressedBefore, compressedAfter] = await Promise.all([
+        compressImage(photoUri),
+        compressImage(afterPhotoUri),
+      ]);
+
       const result = await submitQuest({
-        beforeImage: buildUploadImage(photoUri, 'before.jpg'),
-        afterImage: buildUploadImage(afterPhotoUri, 'after.jpg'),
+        beforeImage: buildUploadImage(compressedBefore, 'before.jpg'),
+        afterImage: buildUploadImage(compressedAfter, 'after.jpg'),
         subject: selectedSubject,
         topic: trimmedHomeworkName,
         userName: user?.name || 'お子様',
@@ -371,7 +378,7 @@ export default function CameraScreen() {
 
   return (
     <ImageBackground
-      source={require('../../asset/camera/images/background screen.png')}
+      source={require('../../asset/camera/images/background_screen.png')}
       style={styles.bg}
       resizeMode="cover"
     >
@@ -456,8 +463,8 @@ export default function CameraScreen() {
               <Image
                 source={
                   isBackendError
-                    ? require('../../asset/camera/images/Button M2.png')
-                    : require('../../asset/camera/images/Button M.png')
+                    ? require('../../asset/camera/images/Button_M2.png')
+                    : require('../../asset/camera/images/Button_M.png')
                 }
                 style={styles.buttonMImage}
                 resizeMode="contain"
@@ -478,7 +485,7 @@ export default function CameraScreen() {
               }}
             >
               <Image
-                source={require('../../asset/camera/images/Button S.png')}
+                source={require('../../asset/camera/images/Button_S.png')}
                 style={styles.buttonSImage}
                 resizeMode="contain"
               />
@@ -550,7 +557,7 @@ export default function CameraScreen() {
             {/* 1. 赤い角丸情報ボックス */}
             <View style={styles.challengeInfoBox}>
               <AppText style={styles.challengeInfoText}>
-                {GRADE + '：' + (selectedSubject ?? '') + '\n' + homeworkName + '\nに挑戦中！'}
+                {(user?.grade ?? '学年未設定') + '：' + (selectedSubject ?? '') + '\n' + homeworkName + '\nに挑戦中！'}
               </AppText>
             </View>
 
@@ -569,7 +576,7 @@ export default function CameraScreen() {
             {/* 4. キャラクターと宝箱エリア */}
             <View style={styles.charactersArea}>
               <Image
-                source={require('../../asset/camera/images/Character on the left.png')}
+                source={require('../../asset/camera/images/Character_on_the_left.png')}
                 style={styles.charLeft}
                 resizeMode="contain"
               />
@@ -579,7 +586,7 @@ export default function CameraScreen() {
                 resizeMode="contain"
               />
               <Image
-                source={require('../../asset/camera/images/Character on the right.png')}
+                source={require('../../asset/camera/images/Character_on_the_right.png')}
                 style={styles.charRight}
                 resizeMode="contain"
               />
@@ -708,7 +715,7 @@ export default function CameraScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.alertPhotoContainer}>
               <Image
-                source={require('../../asset/camera/images/Alerts photo.png')}
+                source={require('../../asset/camera/images/Alerts_photo.png')}
                 style={styles.alertPhotoImage}
                 resizeMode="contain"
               />
@@ -774,7 +781,7 @@ export default function CameraScreen() {
                 onPress={() => {
                   // ホーム画面に宿題情報を反映（Contextを更新）
                   setHomework({
-                    grade: GRADE,
+                    grade: user?.grade ?? '学年未設定',
                     subject: selectedSubject ?? '',
                     name: homeworkName.trim(),
                   });

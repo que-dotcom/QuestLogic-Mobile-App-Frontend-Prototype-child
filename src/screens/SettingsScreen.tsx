@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Animated,
   View,
@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -18,10 +19,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
 import { useAuth } from '../context/AuthContext';
 import { useBGM, BgmCategory } from '../context/BGMContext';
+import { getDevices, addDevice, deleteDevice, getAiSettings, updateAiSettings } from '../api/family';
+import type { Device, AiSettings } from '../types/api';
 
 // ─── 型定義 ────────────────────────────────────────────────────────────────
 
-type SectionKey = 'notification' | 'volume' | 'logout' | 'howto' | 'about';
+type SectionKey = 'notification' | 'volume' | 'logout' | 'howto' | 'about' | 'devices' | 'aiSettings';
 
 type HowtoTopic = 'home' | 'camera' | 'reward';
 
@@ -40,9 +43,11 @@ type HowtoPage = {
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
-const SECTIONS: Array<{ key: SectionKey; label: string; icon: string }> = [
+const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; parentOnly?: boolean }> = [
   { key: 'notification', label: '通知設定', icon: '⏰' },
   { key: 'volume', label: 'BGM / SE 音量', icon: '🔊' },
+  { key: 'devices', label: 'デバイス管理', icon: '📱', parentOnly: true },
+  { key: 'aiSettings', label: 'AI採点設定', icon: '🤖', parentOnly: true },
   { key: 'howto', label: '使い方・遊び方・コツ', icon: '❓' },
   { key: 'about', label: 'クレジット・制作者・バージョン', icon: '📄' },
   { key: 'logout', label: 'ログアウト', icon: '⏏️' },
@@ -67,36 +72,37 @@ const BGM_CATEGORIES: Array<{ key: BgmCategory; label: string }> = [
 
 // カテゴリ選択時に表示するバナー画像（require は静的解決が必要なのでここで定義）
 const BGM_CATEGORY_IMAGES: Record<BgmCategory, ReturnType<typeof require>> = {
-  battle:   require('../../asset/settings/images/Retro battle style.png'),
-  stylish:  require('../../asset/settings/images/Retro stylish style.png'),
-  relaxing: require('../../asset/settings/images/Retro and relaxing style.png'),
+  battle:   require('../../asset/settings/images/Retro_battle_style.png'),
+  stylish:  require('../../asset/settings/images/Retro_stylish_style.png'),
+  relaxing: require('../../asset/settings/images/Retro_and_relaxing_style.png'),
 };
 
 // ─── タブヘッダー画像マップ ────────────────────────────────────────────────────
 
-const SECTION_HEADER_IMAGES: Record<SectionKey, ReturnType<typeof require>> = {
-  notification: require('../../asset/settings/images/Notification settings.png'),
-  volume: require('../../asset/settings/images/BGM Settings.png'),
+const SECTION_HEADER_IMAGES: Partial<Record<SectionKey, ReturnType<typeof require>>> = {
+  notification: require('../../asset/settings/images/Notification_settings.png'),
+  volume: require('../../asset/settings/images/BGM_Settings.png'),
   logout: require('../../asset/settings/images/Logout.png'),
-  howto: require('../../asset/settings/images/How to use.png'),
+  howto: require('../../asset/settings/images/How_to_use.png'),
   about: require('../../asset/settings/images/credit.png'),
+  // devices: 画像なし → テキストヘッダーで代替
 };
 
 // ─── How-to 画像マップ ───────────────────────────────────────────────────────
 
 const howtoImages: Record<HowtoPageLayout, ReturnType<typeof require>> = {
-  home1: require('../../asset/settings/images/image 3.png'),
-  home2: require('../../asset/settings/images/image 4.png'),
-  home3: require('../../asset/settings/images/image 5.png'),
-  home4: require('../../asset/settings/images/image 6.png'),
-  camera1: require('../../asset/settings/images/image 11.png'),
-  camera2: require('../../asset/settings/images/image 12.png'),
-  camera3: require('../../asset/settings/images/image 13.png'),
-  camera4: require('../../asset/settings/images/image 14.png'),
-  reward1: require('../../asset/settings/images/image 7.png'),
-  reward2: require('../../asset/settings/images/image 8.png'),
-  reward3: require('../../asset/settings/images/image 9.png'),
-  reward4: require('../../asset/settings/images/image 10.png'),
+  home1: require('../../asset/settings/images/image_3.png'),
+  home2: require('../../asset/settings/images/image_4.png'),
+  home3: require('../../asset/settings/images/image_5.png'),
+  home4: require('../../asset/settings/images/image_6.png'),
+  camera1: require('../../asset/settings/images/image_11.png'),
+  camera2: require('../../asset/settings/images/image_12.png'),
+  camera3: require('../../asset/settings/images/image_13.png'),
+  camera4: require('../../asset/settings/images/image_14.png'),
+  reward1: require('../../asset/settings/images/image_7.png'),
+  reward2: require('../../asset/settings/images/image_8.png'),
+  reward3: require('../../asset/settings/images/image_9.png'),
+  reward4: require('../../asset/settings/images/image_10.png'),
 };
 
 // ─── How-to コンテンツ定義 ──────────────────────────────────────────────────
@@ -208,7 +214,24 @@ export default function SettingsScreen() {
     logout: false,
     howto: false,
     about: false,
+    devices: false,
+    aiSettings: false,
   });
+
+  // AI採点設定
+  // TASK-13: PATCH /api/family/settings/ai を呼ぶ。
+  // React Native ネイティブビルドでは CORS が適用されないため問題なし。
+  // Web/Expo Go 環境でのみバックエンド側で PATCH を CORS 許可する必要がある。
+  const [aiSettings, setAiSettings] = useState<AiSettings | null>(null);
+  const [aiSettingsLoading, setAiSettingsLoading] = useState(false);
+  const [aiSettingsSaving, setAiSettingsSaving] = useState(false);
+
+  // デバイス管理
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [addDeviceModalVisible, setAddDeviceModalVisible] = useState(false);
+  const [newDeviceName, setNewDeviceName] = useState('');
+  const [addingDevice, setAddingDevice] = useState(false);
 
   // ユーザー名（AuthContext の user.name を Single Source of Truth とし、ローカル state は表示用）
   const [userName, setUserName] = useState('匿名さん');
@@ -333,6 +356,14 @@ export default function SettingsScreen() {
       if (key === 'notification' && next[key]) {
         setShowNotificationDesc(true);
       }
+      // デバイスタブを開いたとき：一覧を取得
+      if (key === 'devices' && next[key]) {
+        fetchDevices();
+      }
+      // AI設定タブを開いたとき：設定を取得
+      if (key === 'aiSettings' && next[key]) {
+        fetchAiSettings();
+      }
       return next;
     });
   };
@@ -385,6 +416,92 @@ export default function SettingsScreen() {
     } catch (e) {
       // Expo Go など権限リクエストが使えない環境ではエラーを吸収して継続
       console.warn('[Notifications] requestPermissionsAsync failed:', e);
+    }
+  };
+
+  // ── デバイス管理 ──────────────────────────────────────────────────────────
+
+  const fetchDevices = useCallback(async () => {
+    setDevicesLoading(true);
+    try {
+      const res = await getDevices();
+      setDevices(res.data);
+    } catch (e) {
+      console.error('[Devices] fetch error:', e);
+      Alert.alert('エラー', 'デバイス一覧の取得に失敗しました。');
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, []);
+
+  const handleAddDevice = async () => {
+    const trimmed = newDeviceName.trim();
+    if (!trimmed) {
+      Alert.alert('入力エラー', 'デバイス名を入力してください。');
+      return;
+    }
+    setAddingDevice(true);
+    try {
+      const res = await addDevice({ name: trimmed });
+      setDevices((prev) => [...prev, res.data]);
+      setNewDeviceName('');
+      setAddDeviceModalVisible(false);
+    } catch (e) {
+      console.error('[Devices] add error:', e);
+      Alert.alert('エラー', 'デバイスの追加に失敗しました。');
+    } finally {
+      setAddingDevice(false);
+    }
+  };
+
+  const handleDeleteDevice = (device: Device) => {
+    Alert.alert(
+      'デバイスを削除',
+      `「${device.name}」を削除しますか？`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDevice(device.id);
+              setDevices((prev) => prev.filter((d) => d.id !== device.id));
+            } catch (e) {
+              console.error('[Devices] delete error:', e);
+              Alert.alert('エラー', 'デバイスの削除に失敗しました。');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── AI採点設定 ────────────────────────────────────────────────────────────
+
+  const fetchAiSettings = useCallback(async () => {
+    setAiSettingsLoading(true);
+    try {
+      const res = await getAiSettings();
+      setAiSettings(res.data);
+    } catch (e) {
+      console.error('[AiSettings] fetch error:', e);
+      Alert.alert('エラー', 'AI設定の取得に失敗しました。');
+    } finally {
+      setAiSettingsLoading(false);
+    }
+  }, []);
+
+  const handleUpdateAiSettings = async (patch: Parameters<typeof updateAiSettings>[0]) => {
+    setAiSettingsSaving(true);
+    try {
+      const res = await updateAiSettings(patch);
+      setAiSettings(res.data);
+    } catch (e) {
+      console.error('[AiSettings] update error:', e);
+      Alert.alert('エラー', 'AI設定の更新に失敗しました。');
+    } finally {
+      setAiSettingsSaving(false);
     }
   };
 
@@ -499,7 +616,7 @@ export default function SettingsScreen() {
             {showNotificationDesc && (
               <View style={styles.notificationDescWrapper}>
                 <Image
-                  source={require('../../asset/settings/images/Notification Description.png')}
+                  source={require('../../asset/settings/images/Notification_Description.png')}
                   style={styles.notificationDescImage}
                   resizeMode="contain"
                 />
@@ -520,8 +637,8 @@ export default function SettingsScreen() {
               <Image
                 source={
                   !isNotificationEnabled
-                    ? require('../../asset/settings/images/Notifications disabled on.png')
-                    : require('../../asset/settings/images/Notifications disabled off.png')
+                    ? require('../../asset/settings/images/Notifications_disabled_on.png')
+                    : require('../../asset/settings/images/Notifications_disabled_off.png')
                 }
                 style={styles.notificationToggleImage}
                 resizeMode="contain"
@@ -537,8 +654,8 @@ export default function SettingsScreen() {
               <Image
                 source={
                   isNotificationEnabled
-                    ? require('../../asset/settings/images/Notifications enabled on.png')
-                    : require('../../asset/settings/images/Notifications enabled off.png')
+                    ? require('../../asset/settings/images/Notifications_enabled_on.png')
+                    : require('../../asset/settings/images/Notifications_enabled_off.png')
                 }
                 style={styles.notificationToggleImage}
                 resizeMode="contain"
@@ -568,13 +685,13 @@ export default function SettingsScreen() {
             {/* ── 音量インジケーター（パルスアニメーション: min→mid→max→mid ループ） ── */}
             <View style={styles.bgmIndicatorWrapper}>
               <Animated.View style={[styles.bgmIndicatorLayer, { opacity: minOp }]}>
-                <Image source={require('../../asset/settings/images/BGM minimum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
+                <Image source={require('../../asset/settings/images/BGM_minimum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
               </Animated.View>
               <Animated.View style={[styles.bgmIndicatorLayer, styles.bgmIndicatorLayerAbsolute, { opacity: midOp }]}>
-                <Image source={require('../../asset/settings/images/BGM middle.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
+                <Image source={require('../../asset/settings/images/BGM_middle.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
               </Animated.View>
               <Animated.View style={[styles.bgmIndicatorLayer, styles.bgmIndicatorLayerAbsolute, { opacity: maxOp }]}>
-                <Image source={require('../../asset/settings/images/BGM maximum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
+                <Image source={require('../../asset/settings/images/BGM_maximum.png')} style={styles.bgmIndicatorImage} resizeMode="contain" />
               </Animated.View>
             </View>
 
@@ -669,6 +786,135 @@ export default function SettingsScreen() {
           </View>
         );
 
+      case 'devices':
+        return (
+          <View style={styles.devicesSection}>
+            {devicesLoading ? (
+              <ActivityIndicator color="#fff" style={{ marginVertical: 16 }} />
+            ) : devices.length === 0 ? (
+              <AppText style={styles.devicesEmptyText}>登録済みデバイスはありません</AppText>
+            ) : (
+              devices.map((device) => (
+                <View key={device.id} style={styles.deviceItem}>
+                  <AppText style={styles.deviceName}>📱 {device.name}</AppText>
+                  <TouchableOpacity
+                    style={styles.deviceDeleteButton}
+                    onPress={() => handleDeleteDevice(device)}
+                    activeOpacity={0.7}
+                  >
+                    <AppText style={styles.deviceDeleteText}>削除</AppText>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+            <TouchableOpacity
+              style={styles.deviceAddButton}
+              onPress={() => {
+                setNewDeviceName('');
+                setAddDeviceModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <AppText style={styles.deviceAddButtonText}>＋ デバイスを追加</AppText>
+            </TouchableOpacity>
+          </View>
+        );
+
+      case 'aiSettings':
+        return (
+          <View style={styles.aiSettingsSection}>
+            {aiSettingsLoading ? (
+              <ActivityIndicator color="#fff" style={{ marginVertical: 16 }} />
+            ) : !aiSettings ? (
+              <AppText style={styles.aiSettingsEmptyText}>設定を取得できませんでした</AppText>
+            ) : (
+              <>
+                {/* 厳しさスライダー */}
+                <View style={styles.aiSettingsRow}>
+                  <AppText style={styles.aiSettingsLabel}>
+                    {'厳しさ：' + aiSettings.strictness + ' / 5'}
+                  </AppText>
+                  <View style={styles.aiSettingsButtonRow}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[
+                          styles.aiSettingsStepButton,
+                          aiSettings.strictness === v && styles.aiSettingsStepButtonActive,
+                        ]}
+                        onPress={() => handleUpdateAiSettings({ strictness: v })}
+                        disabled={aiSettingsSaving}
+                        activeOpacity={0.7}
+                      >
+                        <AppText style={styles.aiSettingsStepText}>{v}</AppText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* 注目度スライダー */}
+                <View style={styles.aiSettingsRow}>
+                  <AppText style={styles.aiSettingsLabel}>
+                    {'注目度：' + aiSettings.focus + ' / 5'}
+                  </AppText>
+                  <View style={styles.aiSettingsButtonRow}>
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[
+                          styles.aiSettingsStepButton,
+                          aiSettings.focus === v && styles.aiSettingsStepButtonActive,
+                        ]}
+                        onPress={() => handleUpdateAiSettings({ focus: v })}
+                        disabled={aiSettingsSaving}
+                        activeOpacity={0.7}
+                      >
+                        <AppText style={styles.aiSettingsStepText}>{v}</AppText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* NG フラグ */}
+                <AppText style={styles.aiSettingsSectionTitle}>NG判定</AppText>
+                {(
+                  [
+                    { key: 'missingProcess', label: '過程の欠落を NG 判定' },
+                    { key: 'workTimeMismatch', label: '作業時間の不一致を NG 判定' },
+                    { key: 'imageReuse', label: '画像の使い回しを NG 判定' },
+                  ] as const
+                ).map(({ key: ngKey, label }) => (
+                  <TouchableOpacity
+                    key={ngKey}
+                    style={styles.aiSettingsToggleRow}
+                    onPress={() =>
+                      handleUpdateAiSettings({
+                        ng: { [ngKey]: !aiSettings.ng[ngKey] },
+                      })
+                    }
+                    disabled={aiSettingsSaving}
+                    activeOpacity={0.7}
+                  >
+                    <AppText style={styles.aiSettingsLabel}>{label}</AppText>
+                    <AppText
+                      style={[
+                        styles.aiSettingsToggleText,
+                        aiSettings.ng[ngKey] && styles.aiSettingsToggleTextOn,
+                      ]}
+                    >
+                      {aiSettings.ng[ngKey] ? 'ON' : 'OFF'}
+                    </AppText>
+                  </TouchableOpacity>
+                ))}
+
+                {aiSettingsSaving && (
+                  <ActivityIndicator color="#aaf" style={{ marginTop: 8 }} />
+                )}
+              </>
+            )}
+          </View>
+        );
+
       case 'about':
         return (
           <View style={styles.bodyColumn}>
@@ -719,7 +965,7 @@ export default function SettingsScreen() {
 
   return (
     <ImageBackground
-      source={require('../../asset/settings/images/background screen.png.png')}
+      source={require('../../asset/settings/images/background_screen.png.png')}
       style={styles.bgImage}
       resizeMode="cover"
     >
@@ -762,6 +1008,53 @@ export default function SettingsScreen() {
           </View>
         </Modal>
 
+        {/* デバイス追加モーダル */}
+        <Modal
+          visible={addDeviceModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAddDeviceModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <AppText style={styles.modalTitle}>デバイスを追加</AppText>
+              <TextInput
+                value={newDeviceName}
+                onChangeText={setNewDeviceName}
+                style={styles.modalInput}
+                placeholder="デバイス名を入力"
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleAddDevice}
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => setAddDeviceModalVisible(false)}
+                  disabled={addingDevice}
+                >
+                  <AppText style={styles.modalButtonText}>キャンセル</AppText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  onPress={handleAddDevice}
+                  disabled={addingDevice}
+                >
+                  {addingDevice ? (
+                    <ActivityIndicator size="small" color="#e3e3ff" />
+                  ) : (
+                    <AppText style={[styles.modalButtonText, styles.modalButtonPrimaryText]}>
+                      追加
+                    </AppText>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* 画面全体をスクロール可能にする */}
         <ScrollView
           style={styles.scroll}
@@ -784,8 +1077,9 @@ export default function SettingsScreen() {
 
           {/* セクション一覧（各タブを独立して開閉） */}
           <View style={styles.sectionsContainer}>
-            {SECTIONS.map((section) => {
+            {SECTIONS.filter((s) => !s.parentOnly || user?.role === 'PARENT').map((section) => {
               const isOpen = expanded[section.key];
+              const headerImage = SECTION_HEADER_IMAGES[section.key];
               return (
                 <View key={section.key} style={styles.sectionContainer}>
                   <TouchableOpacity
@@ -793,15 +1087,24 @@ export default function SettingsScreen() {
                     style={styles.sectionHeader}
                     activeOpacity={0.8}
                   >
-                    <Image
-                      source={SECTION_HEADER_IMAGES[section.key]}
-                      style={
-                        section.key === 'about'
-                          ? styles.tabImageCredit
-                          : styles.tabImageNormal
-                      }
-                      resizeMode="contain"
-                    />
+                    {headerImage ? (
+                      <Image
+                        source={headerImage}
+                        style={
+                          section.key === 'about'
+                            ? styles.tabImageCredit
+                            : styles.tabImageNormal
+                        }
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.tabTextHeader}>
+                        <AppText style={styles.tabTextHeaderLabel}>
+                          {section.icon} {section.label}
+                        </AppText>
+                        <AppText style={styles.tabTextHeaderArrow}>{isOpen ? '∧' : '∨'}</AppText>
+                      </View>
+                    )}
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={styles.sectionBody}>{renderSectionBody(section.key)}</View>
@@ -1283,6 +1586,142 @@ const styles = StyleSheet.create({
   howtoModalPageText: {
     fontSize: 13,
     color: '#c6c6db',
+  },
+
+  // ── セクションテキストヘッダー（画像なし代替） ────────────────────────────
+  tabTextHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  tabTextHeaderLabel: {
+    fontSize: 14,
+    color: '#e3e3ff',
+    letterSpacing: 1,
+  },
+  tabTextHeaderArrow: {
+    fontSize: 12,
+    color: '#c6c6db',
+  },
+
+  // ── デバイス管理 ──────────────────────────────────────────────────────────
+  devicesSection: {
+    gap: 10,
+  },
+  devicesEmptyText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  deviceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  deviceName: {
+    fontSize: 14,
+    color: '#e3e3ff',
+    flex: 1,
+  },
+  deviceDeleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(220,28,28,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(220,28,28,0.4)',
+  },
+  deviceDeleteText: {
+    fontSize: 12,
+    color: '#ff8080',
+  },
+  deviceAddButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(110,140,255,0.4)',
+    backgroundColor: 'rgba(110,140,255,0.1)',
+  },
+  deviceAddButtonText: {
+    fontSize: 14,
+    color: '#a0b4ff',
+    letterSpacing: 1,
+  },
+
+  // ── AI採点設定 ────────────────────────────────────────────────────────────
+  aiSettingsSection: {
+    paddingVertical: 4,
+  },
+  aiSettingsEmptyText: {
+    color: '#aaa',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  aiSettingsRow: {
+    marginBottom: 14,
+  },
+  aiSettingsLabel: {
+    fontSize: 13,
+    color: '#fff',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  aiSettingsButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  aiSettingsStepButton: {
+    width: 38,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#556',
+    backgroundColor: '#2a2a3a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiSettingsStepButtonActive: {
+    borderColor: '#7b68ee',
+    backgroundColor: '#7b68ee',
+  },
+  aiSettingsStepText: {
+    color: '#fff',
+    fontSize: 13,
+  },
+  aiSettingsSectionTitle: {
+    fontSize: 12,
+    color: '#aaaacc',
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  aiSettingsToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334',
+  },
+  aiSettingsToggleText: {
+    fontSize: 13,
+    color: '#666',
+    letterSpacing: 1,
+  },
+  aiSettingsToggleTextOn: {
+    color: '#7b68ee',
   },
 
   // ── ログアウト ────────────────────────────────────────────────────────────

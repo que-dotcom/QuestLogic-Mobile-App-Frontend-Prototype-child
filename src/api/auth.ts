@@ -2,9 +2,10 @@ import { apiClient } from "./client";
 import type { LoginResponse, GoogleAuthRequest } from "../types/api";
 
 // Basic認証ヘッダー（開発用）
-// "admin:Quest2404" を Base64 エンコードした固定文字列
-// React Native では btoa が使えない環境があるため、固定値を直接使用する
-const BASIC_AUTH_HEADER = "Basic YWRtaW46UXVlc3QyNDA0";
+// .env の EXPO_PUBLIC_TEST_BASIC_AUTH に "Basic <base64>" 形式で設定する。
+// 未設定の場合は既存の固定値にフォールバックする。
+const BASIC_AUTH_HEADER =
+  process.env.EXPO_PUBLIC_TEST_BASIC_AUTH ?? "Basic YWRtaW46UXVlc3QyNDA0";
 
 /**
  * GET /api/test/login/:role

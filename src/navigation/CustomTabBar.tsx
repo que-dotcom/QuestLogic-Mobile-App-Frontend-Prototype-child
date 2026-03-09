@@ -17,10 +17,10 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 const TAB_BAR_HEIGHT = 83;
 
 const TAB_ICONS = {
-  Home: require('../../asset/home/images/Home icon.png'),
-  Camera: require('../../asset/home/images/Camera icon.png'),
-  Reward: require('../../asset/home/images/Reward Icon.png'),
-  Settings: require('../../asset/home/images/Settings icon.png'),
+  Home: require('../../asset/home/images/Home_icon.png'),
+  Camera: require('../../asset/home/images/Camera_icon.png'),
+  Reward: require('../../asset/home/images/Reward_Icon.png'),
+  Settings: require('../../asset/home/images/Settings_icon.png'),
 } as const;
 
 type TabName = keyof typeof TAB_ICONS;
@@ -39,7 +39,7 @@ export default function CustomTabBar({
        * resizeMode="stretch" でバー画像を指定幅に引き伸ばす（高さ固定のため比率崩れは無い）。
        */}
       <ImageBackground
-        source={require('../../asset/home/images/Menu Bar.png')}
+        source={require('../../asset/home/images/Menu_Bar.png')}
         style={styles.tabBar}
         resizeMode="stretch"
       >

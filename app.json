@@ -15,9 +15,18 @@
       }
     },
     "web": {},
+    "scheme": "com.raitsumugu.child-app",
     "plugins": [
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-audio",
+      "expo-asset",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_IOS_CLIENT_ID_REVERSED"
+        }
+      ]
     ]
   }
 }

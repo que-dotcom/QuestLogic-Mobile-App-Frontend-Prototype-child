@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../components/AppText';
 import { formatTimeAgo } from '../utils/timeHelper';
 import { useAdvice } from '../context/AdviceContext';
+import { useAuth } from '../context/AuthContext';
 import type { RewardHistoryEntry } from '../context/AdviceContext';
 import { getQuests } from '../api/quests';
 import { getApiErrorMessage } from '../api/client';
@@ -45,18 +46,18 @@ interface RewardItem {
 // ──────────────────────────────────────────
 
 const SUBJECT_ICONS: Record<'国語' | '数学' | '社会' | '理科' | '英語', ImageSourcePropType> = {
-  国語: require('../../asset/reward/images/national language.png'),
+  国語: require('../../asset/reward/images/national_language.png'),
   数学: require('../../asset/reward/images/mathematics.png'),
   社会: require('../../asset/reward/images/society.png'),
   理科: require('../../asset/reward/images/science.png'),
   英語: require('../../asset/reward/images/english.png'),
 };
 
-const FIXED_GRADE = '小学3年生';
+const FALLBACK_GRADE = '学年未設定';
 const EMPTY_ADVICE_TEXT = 'まだAIアドバイスはありません。';
 const EMPTY_HISTORY_TEXT = 'まだ履歴がありません。';
 const HISTORY_LOADING_TEXT = 'リワード履歴を読み込み中です。';
-const DEFAULT_SUBJECT_ICON = require('../../asset/reward/images/national language.png');
+const DEFAULT_SUBJECT_ICON = require('../../asset/reward/images/national_language.png');
 
 // ──────────────────────────────────────────
 // AIアドバイス: 実データ表示用ヘルパー
@@ -94,11 +95,11 @@ function toRewardText(earnedPoints?: number): string {
   return `+${earnedPoints}PT`;
 }
 
-function mapHistoryEntryToRewardItem(entry: RewardHistoryEntry): RewardItem {
+function mapHistoryEntryToRewardItem(entry: RewardHistoryEntry, grade: string): RewardItem {
   return {
     id: entry.id,
     subject: entry.subject,
-    grade: FIXED_GRADE,
+    grade,
     homeworkName: entry.topic,
     timestamp: new Date(entry.createdAt),
     rewardText: toRewardText(entry.earnedPoints),
@@ -107,6 +108,7 @@ function mapHistoryEntryToRewardItem(entry: RewardHistoryEntry): RewardItem {
 
 function mapQuestToRewardItem(
   quest: Quest,
+  grade: string,
   historyEntry?: RewardHistoryEntry
 ): RewardItem | null {
   const subject = historyEntry?.subject ?? quest.subject;
@@ -123,7 +125,7 @@ function mapQuestToRewardItem(
   return {
     id: quest.id,
     subject,
-    grade: FIXED_GRADE,
+    grade,
     homeworkName: topic && topic.trim() ? topic.trim() : '宿題名未設定',
     timestamp: new Date(quest.createdAt),
     rewardText: toRewardText(quest.earnedPoints ?? historyEntry?.earnedPoints),
@@ -154,7 +156,7 @@ function ListHeader({
   return (
     <View style={styles.listHeader}>
       <Image
-        source={require('../../asset/reward/images/Level bar.png')}
+        source={require('../../asset/reward/images/Level_bar.png')}
         style={styles.levelBarImage}
         resizeMode="contain"
       />
@@ -212,6 +214,8 @@ function RewardListItem({
 // ──────────────────────────────────────────
 
 export default function RewardScreen() {
+  const { user } = useAuth();
+  const userGrade = user?.grade ?? FALLBACK_GRADE;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAdvice, setShowAdvice] = useState(false);
   /** アドバイス画面を開いた時点で新着だった場合のみ true → att.png を表示 */
@@ -296,17 +300,17 @@ export default function RewardScreen() {
   const rewardItems = useMemo(() => {
     const historyMap = new Map(rewardHistory.map((entry) => [entry.id, entry]));
     const apiItems = questHistory
-      .map((quest) => mapQuestToRewardItem(quest, historyMap.get(quest.id)))
+      .map((quest) => mapQuestToRewardItem(quest, userGrade, historyMap.get(quest.id)))
       .filter((item): item is RewardItem => item !== null);
     const apiIds = new Set(questHistory.map((quest) => quest.id));
     const localOnlyItems = rewardHistory
       .filter((entry) => !apiIds.has(entry.id))
-      .map(mapHistoryEntryToRewardItem);
+      .map((entry) => mapHistoryEntryToRewardItem(entry, userGrade));
 
     return [...apiItems, ...localOnlyItems].sort(
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
     );
-  }, [questHistory, rewardHistory]);
+  }, [questHistory, rewardHistory, userGrade]);
 
   const selectedRewardItem = useMemo(() => {
     if (!selectedRewardItemId) {
@@ -420,7 +424,7 @@ export default function RewardScreen() {
 
   return (
     <ImageBackground
-      source={require('../../asset/reward/images/background screen.png')}
+      source={require('../../asset/reward/images/background_screen.png')}
       style={styles.screenBackground}
       resizeMode="cover"
     >
@@ -475,7 +479,7 @@ export default function RewardScreen() {
               activeOpacity={0.8}
             >
               <ImageBackground
-                source={require('../../asset/reward/images/Button W.png')}
+                source={require('../../asset/reward/images/Button_W.png')}
                 style={styles.adviceBackBtnBg}
                 resizeMode="stretch"
               >
@@ -526,8 +530,8 @@ export default function RewardScreen() {
               <Image
                 source={
                   hasNewAdvice
-                    ? require('../../asset/reward/images/Button M2.png')
-                    : require('../../asset/reward/images/Button M.png')
+                    ? require('../../asset/reward/images/Button_M2.png')
+                    : require('../../asset/reward/images/Button_M.png')
                 }
                 style={styles.aiButtonImage}
                 resizeMode="contain"

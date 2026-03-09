@@ -20,17 +20,17 @@ const BAR_ROWS: Array<{
   color: string;
 }> = [
   {
-    image: require('../../asset/home/images/Game bar.png'),
+    image: require('../../asset/home/images/Game_bar.png'),
     getLabel: ({ gameLimitMin }) => `Game ${gameLimitMin}min`,
     color: '#F08080',
   },
   {
-    image: require('../../asset/home/images/Smartphone bar.png'),
+    image: require('../../asset/home/images/Smartphone_bar.png'),
     getLabel: ({ smartphoneLimitMin }) => `Smartphone ${smartphoneLimitMin}min`,
     color: '#87CEFA',
   },
   {
-    image: require('../../asset/home/images/Level bar.png'),
+    image: require('../../asset/home/images/Level_bar.png'),
     getLabel: ({ level }) => `Level ${level}`,
     color: '#90EE90',
   },
@@ -48,7 +48,7 @@ export default function StatusBars({
       {/* Status bar 画像 + Lv.テキストを円の中央に重ね表示 */}
       <View style={styles.statusBarWrapper}>
         <Image
-          source={require('../../asset/home/images/Status bar.png')}
+          source={require('../../asset/home/images/Status_bar.png')}
           style={styles.statusBarImage}
           resizeMode="contain"
         />

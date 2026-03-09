@@ -28,13 +28,30 @@ apiClient.interceptors.request.use(
 );
 
 // ============================================================
+// 401 ハンドラー: AuthContext との循環参照を避けるためコールバック方式
+// ============================================================
+
+/** 401 受信時に呼び出されるコールバック（AuthProvider が登録する） */
+let unauthorizedHandler: (() => void) | null = null;
+
+/**
+ * 401 受信時に実行するコールバックを登録する。
+ * AuthProvider の useEffect 内から呼び出すことで循環参照を回避する。
+ */
+export const setUnauthorizedHandler = (handler: () => void): void => {
+  unauthorizedHandler = handler;
+};
+
+// ============================================================
 // レスポンスインターセプター: エラーハンドリングの共通化
 // ============================================================
 
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // TODO: 401 の場合はログアウト処理を呼び出す等の共通処理を追加
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      unauthorizedHandler?.();
+    }
     return Promise.reject(error);
   }
 );

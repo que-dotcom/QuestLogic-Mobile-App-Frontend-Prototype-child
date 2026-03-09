@@ -46,7 +46,7 @@ export interface GoogleAuthRequest {
 }
 
 // ============================================================
-// Analyze API
+// AI 分析共通型（/api/quests/submit レスポンス内の aiResult で使用）
 // ============================================================
 
 export interface ScoreBreakdown {
@@ -60,18 +60,6 @@ export interface AiFeature {
   type: string;
   location: string;
   description: string;
-}
-
-/** /api/analyze は success ラッパーなしで直接このオブジェクトを返す */
-export interface AnalyzeResponse {
-  summary: string;
-  score_breakdown: ScoreBreakdown;
-  total_score: number;
-  features: AiFeature[];
-  suspicion_flag: boolean;
-  suspicion_reason: string | null;
-  feedback_to_child: string;
-  feedback_to_parent: string;
 }
 
 // ============================================================
@@ -248,3 +236,13 @@ export interface Device {
 export interface GetDevicesResponse extends BaseResponse {
   data: Device[];
 }
+
+export interface AddDeviceRequest {
+  name: string;
+}
+
+export interface AddDeviceResponse extends BaseResponse {
+  data: Device;
+}
+
+export interface DeleteDeviceResponse extends BaseResponse {}

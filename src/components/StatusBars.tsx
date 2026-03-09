@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import AppText from './AppText';
+import { levelProgress, expProgressLabel } from '../utils/levelHelper';
 
 interface StatusBarsProps {
   level: number;
+  exp: number;
   gameLimitMin: number;
   smartphoneLimitMin: number;
 }
@@ -36,12 +38,16 @@ const BAR_ROWS: Array<{
   },
 ];
 
+
 export default function StatusBars({
   level,
+  exp,
   gameLimitMin,
   smartphoneLimitMin,
 }: StatusBarsProps) {
-  const props = { level, gameLimitMin, smartphoneLimitMin };
+  const props = { level, exp, gameLimitMin, smartphoneLimitMin };
+  const progress = levelProgress(level, exp);
+  const progressLabel = expProgressLabel(level, exp);
 
   return (
     <View style={styles.container}>
@@ -71,6 +77,14 @@ export default function StatusBars({
             </AppText>
           </View>
         ))}
+
+        {/* EXP 進捗バー */}
+        <View style={styles.expContainer}>
+          <View style={styles.expBarTrack}>
+            <View style={[styles.expBarFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <AppText style={styles.expLabel}>{progressLabel}</AppText>
+        </View>
       </View>
     </View>
   );
@@ -122,5 +136,25 @@ const styles = StyleSheet.create({
   },
   barLabel: {
     fontSize: 14,
+  },
+  expContainer: {
+    marginTop: 4,
+    gap: 3,
+  },
+  expBarTrack: {
+    width: 160,
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  expBarFill: {
+    height: '100%',
+    backgroundColor: '#FFD700',
+    borderRadius: 4,
+  },
+  expLabel: {
+    fontSize: 11,
+    color: '#FFD700',
   },
 });

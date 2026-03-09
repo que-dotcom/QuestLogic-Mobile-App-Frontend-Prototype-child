@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/AppNavigator';
-import { getTitleByExp } from '../utils/titleHelper';
+import { getTitleByLevel } from '../utils/titleHelper';
 import { useHomework } from '../context/HomeworkContext';
 import { useAuth } from '../context/AuthContext';
 import HeaderProfile from '../components/HeaderProfile';
@@ -33,7 +33,7 @@ export default function HomeScreen({ navigation }: Props) {
     user?.currentMinutes ?? (user?.currentPoints ?? 0) * (user?.minutesPerPoint ?? 0);
   const currentLevel = user?.level || 1;
 
-  const title = getTitleByExp(exp);
+  const title = getTitleByLevel(currentLevel);
   const { homework } = useHomework();
 
   const handleRegisterPress = () => {
@@ -54,6 +54,7 @@ export default function HomeScreen({ navigation }: Props) {
           {/* B. ステータスバー + バー画像ラベル */}
           <StatusBars
             level={currentLevel}
+            exp={exp}
             gameLimitMin={currentMinutes}
             smartphoneLimitMin={currentMinutes}
           />

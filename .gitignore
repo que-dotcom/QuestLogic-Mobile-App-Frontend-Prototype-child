@@ -1,14 +1,37 @@
+# npm / Node.js の依存パッケージ（npm install で再生成可能）
 node_modules/
+
+# Expo CLI のキャッシュ・メタデータ（自動生成）
 .expo/
+
+# ビルド成果物（expo export で生成されるWebアプリのバンドル）
 dist/
+
+# npm インストール失敗時のデバッグログ
 npm-debug.*
+
+# Android 署名用キーストアファイル（秘密鍵を含む）
 *.jks
+
+# Apple Push Notification Service (APNs) の認証キー
 *.p8
+
+# iOS 配布用証明書 (PKCS#12 形式)
 *.p12
+
+# 秘密鍵ファイル全般
 *.key
+
+# iOS プロビジョニングプロファイル（アプリ署名に必要）
 *.mobileprovision
+
+# マージ競合時にバックアップとして生成される元ファイル
 *.orig.*
+
+# expo build:web で生成される Web 向けビルド成果物
 web-build/
+
+# 環境変数ファイル（APIキーやシークレット等を含む）
 .env
 .env.local
 .env*.local
@@ -18,3 +41,7 @@ back_to_front.md
 
 # Claude Code (個人設定・メモリ - 非Claudeユーザーには不要)
 .claude/
+
+# プロジェクトにおいて重要ファイル
+business_ModelAndConcept.md
+TASKS.md

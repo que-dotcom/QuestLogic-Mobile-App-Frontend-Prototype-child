@@ -12,3 +12,9 @@ web-build/
 .env
 .env.local
 .env*.local
+
+# API仕様書を無視する
+back_to_front.md
+
+# Claude Code (個人設定・メモリ - 非Claudeユーザーには不要)
+.claude/

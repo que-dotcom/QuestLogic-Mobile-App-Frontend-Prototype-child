@@ -20,11 +20,13 @@ import AppText from '../components/AppText';
 import { useAuth } from '../context/AuthContext';
 import { useBGM, BgmCategory } from '../context/BGMContext';
 import { getDevices, addDevice, deleteDevice, getAiSettings, updateAiSettings } from '../api/family';
+import { getInviteCode, joinFamily } from '../api/users';
+import * as Clipboard from 'expo-clipboard';
 import type { Device, AiSettings } from '../types/api';
 
 // ─── 型定義 ────────────────────────────────────────────────────────────────
 
-type SectionKey = 'notification' | 'volume' | 'logout' | 'howto' | 'about' | 'devices' | 'aiSettings';
+type SectionKey = 'notification' | 'volume' | 'logout' | 'howto' | 'about' | 'devices' | 'aiSettings' | 'inviteCode' | 'joinFamily';
 
 type HowtoTopic = 'home' | 'camera' | 'reward';
 
@@ -43,10 +45,12 @@ type HowtoPage = {
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
-const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; parentOnly?: boolean }> = [
+const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; parentOnly?: boolean; childOnly?: boolean }> = [
   { key: 'notification', label: '通知設定', icon: '⏰' },
   { key: 'volume', label: 'BGM / SE 音量', icon: '🔊' },
   { key: 'devices', label: 'デバイス管理', icon: '📱', parentOnly: true },
+  { key: 'inviteCode', label: '招待コードを発行する', icon: '🔑', parentOnly: true },
+  { key: 'joinFamily', label: '家族に参加する', icon: '👨‍👩‍👧', childOnly: true },
   { key: 'aiSettings', label: 'AI採点設定', icon: '🤖', parentOnly: true },
   { key: 'howto', label: '使い方・遊び方・コツ', icon: '❓' },
   { key: 'about', label: 'クレジット・制作者・バージョン', icon: '📄' },
@@ -203,7 +207,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const NOTIF_IMG_W = SCREEN_W - 20 - 24; // sectionsContainer margin×2 + sectionBody padding×2
 
 export default function SettingsScreen() {
-  const { user, updateLocalUserName } = useAuth();
+  const { user, updateLocalUserName, refreshUser } = useAuth();
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -216,7 +220,17 @@ export default function SettingsScreen() {
     about: false,
     devices: false,
     aiSettings: false,
+    inviteCode: false,
+    joinFamily: false,
   });
+
+  // 招待コード（親専用）
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [inviteCodeLoading, setInviteCodeLoading] = useState(false);
+
+  // 家族参加（子専用）
+  const [joinCode, setJoinCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
 
   // AI採点設定
   // TASK-13: PATCH /api/family/settings/ai を呼ぶ。
@@ -475,6 +489,46 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  // ── 招待コード（親専用） ──────────────────────────────────────────────────
+
+  const handleGetInviteCode = async () => {
+    setInviteCodeLoading(true);
+    try {
+      const res = await getInviteCode();
+      setInviteCode(res.inviteCode);
+    } catch {
+      Alert.alert('エラー', '招待コードの取得に失敗しました。');
+    } finally {
+      setInviteCodeLoading(false);
+    }
+  };
+
+  const handleCopyInviteCode = async () => {
+    if (!inviteCode) return;
+    await Clipboard.setStringAsync(inviteCode);
+    Alert.alert('コピーしました', '招待コードをクリップボードにコピーしました。');
+  };
+
+  // ── 家族参加（子専用） ────────────────────────────────────────────────────
+
+  const handleJoinFamily = async () => {
+    if (!joinCode.trim()) {
+      Alert.alert('エラー', '招待コードを入力してください。');
+      return;
+    }
+    setJoinLoading(true);
+    try {
+      await joinFamily({ inviteCode: joinCode.trim() });
+      await refreshUser();
+      Alert.alert('完了', '家族への参加が完了しました！');
+      setJoinCode('');
+    } catch {
+      Alert.alert('エラー', '参加に失敗しました。招待コードを確認してください。');
+    } finally {
+      setJoinLoading(false);
+    }
   };
 
   // ── AI採点設定 ────────────────────────────────────────────────────────────
@@ -910,6 +964,69 @@ export default function SettingsScreen() {
                 {aiSettingsSaving && (
                   <ActivityIndicator color="#aaf" style={{ marginTop: 8 }} />
                 )}
+              </>
+            )}
+          </View>
+        );
+
+      case 'inviteCode':
+        return (
+          <View style={styles.devicesSection}>
+            {inviteCodeLoading ? (
+              <ActivityIndicator color="#fff" style={{ marginVertical: 16 }} />
+            ) : inviteCode ? (
+              <>
+                <AppText style={styles.inviteCodeText}>{inviteCode}</AppText>
+                <TouchableOpacity
+                  style={styles.deviceAddButton}
+                  onPress={handleCopyInviteCode}
+                  activeOpacity={0.8}
+                >
+                  <AppText style={styles.deviceAddButtonText}>📋 コピー</AppText>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.deviceAddButton}
+                onPress={handleGetInviteCode}
+                activeOpacity={0.8}
+              >
+                <AppText style={styles.deviceAddButtonText}>🔑 招待コードを取得</AppText>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+
+      case 'joinFamily':
+        return (
+          <View style={styles.devicesSection}>
+            {user?.familyId ? (
+              <AppText style={styles.devicesEmptyText}>✅ 家族への参加が完了しています</AppText>
+            ) : (
+              <>
+                <TextInput
+                  value={joinCode}
+                  onChangeText={setJoinCode}
+                  style={styles.modalInput}
+                  placeholder="招待コードを入力"
+                  placeholderTextColor="rgba(255,255,255,0.5)"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleJoinFamily}
+                />
+                <TouchableOpacity
+                  style={styles.deviceAddButton}
+                  onPress={handleJoinFamily}
+                  disabled={joinLoading}
+                  activeOpacity={0.8}
+                >
+                  {joinLoading ? (
+                    <ActivityIndicator size="small" color="#e3e3ff" />
+                  ) : (
+                    <AppText style={styles.deviceAddButtonText}>👨‍👩‍👧 家族に参加する</AppText>
+                  )}
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -1615,6 +1732,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
+    paddingVertical: 12,
+  },
+  inviteCodeText: {
+    fontSize: 20,
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 4,
     paddingVertical: 12,
   },
   deviceItem: {

@@ -5,6 +5,7 @@ import type {
   GetInviteCodeResponse,
   JoinFamilyRequest,
   JoinFamilyResponse,
+  LeaveFamilyResponse,
   ConsumePointsRequest,
   ConsumePointsResponse,
   GetCurrentUserResponse,
@@ -53,6 +54,17 @@ export const joinFamily = async (
   const response = await apiClient.post<JoinFamilyResponse>(
     "/users/join-family",
     body
+  );
+  return response.data;
+};
+
+/**
+ * POST /api/users/leave-family
+ * 家族から退出する。Child 専用。
+ */
+export const leaveFamily = async (): Promise<LeaveFamilyResponse> => {
+  const response = await apiClient.post<LeaveFamilyResponse>(
+    "/users/leave-family"
   );
   return response.data;
 };

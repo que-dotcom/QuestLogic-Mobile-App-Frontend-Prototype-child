@@ -20,7 +20,7 @@ import AppText from '../components/AppText';
 import { useAuth } from '../context/AuthContext';
 import { useBGM, BgmCategory } from '../context/BGMContext';
 import { getDevices, addDevice, deleteDevice, getAiSettings, updateAiSettings } from '../api/family';
-import { getInviteCode, joinFamily } from '../api/users';
+import { getInviteCode, joinFamily, leaveFamily } from '../api/users';
 import * as Clipboard from 'expo-clipboard';
 import type { Device, AiSettings } from '../types/api';
 
@@ -228,9 +228,10 @@ export default function SettingsScreen() {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [inviteCodeLoading, setInviteCodeLoading] = useState(false);
 
-  // 家族参加（子専用）
+  // 家族参加・退出（子専用）
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+  const [leaveFamilyLoading, setLeaveFamilyLoading] = useState(false);
 
   // AI採点設定
   // TASK-13: PATCH /api/family/settings/ai を呼ぶ。
@@ -524,11 +525,41 @@ export default function SettingsScreen() {
       await refreshUser();
       Alert.alert('完了', '家族への参加が完了しました！');
       setJoinCode('');
-    } catch {
-      Alert.alert('エラー', '参加に失敗しました。招待コードを確認してください。');
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const message = status === 400
+        ? '既にファミリーに参加しています。'
+        : '参加に失敗しました。招待コードを確認してください。';
+      Alert.alert('エラー', message);
     } finally {
       setJoinLoading(false);
     }
+  };
+
+  const handleLeaveFamily = () => {
+    Alert.alert(
+      '家族から抜ける',
+      '本当にこの家族から退出しますか？',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '退出する',
+          style: 'destructive',
+          onPress: async () => {
+            setLeaveFamilyLoading(true);
+            try {
+              await leaveFamily();
+              await refreshUser();
+              Alert.alert('完了', '家族から退出しました。');
+            } catch {
+              Alert.alert('エラー', '退出に失敗しました。しばらくしてから再試行してください。');
+            } finally {
+              setLeaveFamilyLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // ── AI採点設定 ────────────────────────────────────────────────────────────
@@ -1009,7 +1040,21 @@ export default function SettingsScreen() {
         return (
           <View style={styles.devicesSection}>
             {user?.familyId ? (
-              <AppText style={styles.devicesEmptyText}>✅ 家族への参加が完了しています</AppText>
+              <>
+                <AppText style={styles.devicesEmptyText}>✅ 家族への参加が完了しています</AppText>
+                <TouchableOpacity
+                  style={[styles.deviceAddButton, { marginTop: 12, backgroundColor: 'rgba(255,80,80,0.3)' }]}
+                  onPress={handleLeaveFamily}
+                  disabled={leaveFamilyLoading}
+                  activeOpacity={0.8}
+                >
+                  {leaveFamilyLoading ? (
+                    <ActivityIndicator size="small" color="#e3e3ff" />
+                  ) : (
+                    <AppText style={styles.deviceAddButtonText}>🚪 家族から抜ける</AppText>
+                  )}
+                </TouchableOpacity>
+              </>
             ) : (
               <>
                 <TextInput

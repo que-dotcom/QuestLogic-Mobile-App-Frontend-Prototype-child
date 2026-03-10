@@ -89,6 +89,10 @@ export interface JoinFamilyResponse extends BaseResponse {
   data: Pick<User, "id" | "familyId">;
 }
 
+export interface LeaveFamilyResponse extends BaseResponse {
+  data: Pick<User, "id" | "familyId">;
+}
+
 export interface ConsumePointsRequest {
   consumePoints: number;
 }

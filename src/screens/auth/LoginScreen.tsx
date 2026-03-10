@@ -19,6 +19,7 @@ import type { UserRole } from '../../types/api';
 // Google Sign-In 初期化
 GoogleSignin.configure({
   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
 });
 

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,6 +11,8 @@ import type { RootTabParamList } from '../navigation/AppNavigator';
 import { getTitleByLevel } from '../utils/titleHelper';
 import { useHomework } from '../context/HomeworkContext';
 import { useAuth } from '../context/AuthContext';
+import { getGameStatus } from '../api/family';
+import type { GameStatusResponse } from '../types/api';
 import HeaderProfile from '../components/HeaderProfile';
 import StatusBars from '../components/StatusBars';
 import MainActionArea from '../components/MainActionArea';
@@ -19,10 +21,18 @@ type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const { user, refreshUser } = useAuth();
+  const [gameStatus, setGameStatus] = useState<GameStatusResponse | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      void refreshUser();
+      // refreshUser 完了後に role を判定することで、初回マウント時も正しく PARENT を検出する
+      void refreshUser().then((updatedUser) => {
+        if (updatedUser?.role === 'PARENT') {
+          getGameStatus()
+            .then(setGameStatus)
+            .catch(() => setGameStatus(null));
+        }
+      });
     }, [refreshUser])
   );
 
@@ -32,6 +42,8 @@ export default function HomeScreen({ navigation }: Props) {
   const currentMinutes =
     user?.currentMinutes ?? (user?.currentPoints ?? 0) * (user?.minutesPerPoint ?? 0);
   const currentLevel = user?.level || 1;
+  const gameLimitMin = gameStatus?.gameRemainingMinutes ?? currentMinutes;
+  const smartphoneLimitMin = gameStatus?.smartphoneRemainingMinutes ?? currentMinutes;
 
   const title = getTitleByLevel(currentLevel);
   const { homework } = useHomework();
@@ -55,8 +67,8 @@ export default function HomeScreen({ navigation }: Props) {
           <StatusBars
             level={currentLevel}
             exp={exp}
-            gameLimitMin={currentMinutes}
-            smartphoneLimitMin={currentMinutes}
+            gameLimitMin={gameLimitMin}
+            smartphoneLimitMin={smartphoneLimitMin}
           />
 
           {/* C. メインエリア（地図/羊皮紙） */}

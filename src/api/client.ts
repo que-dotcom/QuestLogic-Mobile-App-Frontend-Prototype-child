@@ -3,7 +3,13 @@ import { getToken } from "../utils/tokenStorage";
 
 // ベースURL: 環境変数 EXPO_PUBLIC_API_BASE_URL に /api を付与
 // .env 例: EXPO_PUBLIC_API_BASE_URL=https://QL-api.adcsvmc.net
-const baseURL = `${process.env.EXPO_PUBLIC_API_BASE_URL || "https://QL-api.adcsvmc.net"}/api`;
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+if (!API_BASE) {
+  throw new Error(
+    "[client] EXPO_PUBLIC_API_BASE_URL が設定されていません。.env を確認してください。"
+  );
+}
+const baseURL = `${API_BASE}/api`;
 
 export const apiClient = axios.create({
   baseURL,

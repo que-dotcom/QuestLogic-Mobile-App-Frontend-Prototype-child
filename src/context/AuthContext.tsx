@@ -43,6 +43,11 @@ interface AuthActions {
    * AsyncStorage（local_userName）に保存し、Context の user.name を即座に上書きする。
    */
   updateLocalUserName: (name: string) => Promise<void>;
+  /**
+   * クエスト提出後のレスポンスから currentMinutes / currentPoints を Context に反映する。
+   * BE が /api/users/me にこれらのフィールドを含めるまでの暫定対応。
+   */
+  updateCurrentMinutes: (currentMinutes: number, currentPoints: number) => void;
 }
 
 type AuthContextValue = AuthState & AuthActions;
@@ -168,6 +173,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser((prev) => (prev ? { ...prev, name } : null));
   }, []);
 
+  const updateCurrentMinutes = useCallback((currentMinutes: number, currentPoints: number) => {
+    setUser((prev) => (prev ? { ...prev, currentMinutes, currentPoints } : null));
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -179,6 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         logout,
         refreshUser,
         updateLocalUserName,
+        updateCurrentMinutes,
       }}
     >
       {children}

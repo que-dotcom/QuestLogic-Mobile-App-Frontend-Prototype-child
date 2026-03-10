@@ -116,7 +116,7 @@ const buildUploadImage = (uri: string, fallbackName: string) => {
 
 export default function CameraScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
-  const { user } = useAuth();
+  const { user, updateCurrentMinutes } = useAuth();
   const { setHomework } = useHomework();
   const {
     setHasNewAdvice,
@@ -329,6 +329,7 @@ export default function CameraScreen() {
         createdAt: new Date().toISOString(),
         earnedPoints: result.earnedPoints,
       });
+      updateCurrentMinutes(result.currentMinutes, result.currentPoints);
       setSubmitResult(result);
       setIsBackendError(false);
       setSubmitErrorMessage(null);

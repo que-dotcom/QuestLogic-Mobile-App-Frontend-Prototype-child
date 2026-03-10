@@ -564,7 +564,15 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert('ログアウト', '本当にログアウトしますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      { text: 'ログアウト', style: 'destructive', onPress: logout },
+      {
+        text: 'ログアウト',
+        style: 'destructive',
+        onPress: () => {
+          logout().catch(() => {
+            Alert.alert('エラー', 'ログアウトに失敗しました。もう一度お試しください。');
+          });
+        },
+      },
     ]);
   };
 

@@ -149,9 +149,11 @@ function getQuestAdviceText(quest?: Quest): string | null {
 function ListHeader({
   isExpanded,
   onToggle,
+  expText,
 }: {
   isExpanded: boolean;
   onToggle: () => void;
+  expText: string;
 }) {
   return (
     <View style={styles.listHeader}>
@@ -160,7 +162,7 @@ function ListHeader({
         style={styles.levelBarImage}
         resizeMode="contain"
       />
-      <AppText style={styles.levelText}>あと+10EXPでLv.2</AppText>
+      <AppText style={styles.levelText}>{expText}</AppText>
       <TouchableOpacity activeOpacity={0.7} onPress={onToggle}>
         <AppText style={styles.moreLinkBracket}>
           {'['}
@@ -216,6 +218,11 @@ function RewardListItem({
 export default function RewardScreen() {
   const { user } = useAuth();
   const userGrade = user?.grade ?? FALLBACK_GRADE;
+  const level = user?.level ?? 1;
+  const exp = user?.exp ?? 0;
+  // NOTE: レベルアップ閾値は暫定で level * 100 としている。バックエンド仕様が確定次第定数化する
+  const EXP_PER_LEVEL = level * 100;
+  const expText = `あと+${Math.max(0, EXP_PER_LEVEL - exp)}EXPでLv.${level + 1}`;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAdvice, setShowAdvice] = useState(false);
   /** アドバイス画面を開いた時点で新着だった場合のみ true → att.png を表示 */
@@ -492,7 +499,7 @@ export default function RewardScreen() {
           // ── 展開ビュー: リストが画面全体を占有 ──────────────────────────
           <View style={styles.expandedContainer}>
             <View style={styles.listContainerExpanded}>
-              <ListHeader isExpanded onToggle={toggle} />
+              <ListHeader isExpanded onToggle={toggle} expText={expText} />
               {isHistoryLoading ? (
                 <AppText style={styles.infoText}>{HISTORY_LOADING_TEXT}</AppText>
               ) : historyErrorMessage ? (
@@ -541,7 +548,7 @@ export default function RewardScreen() {
             <AppText style={styles.screenTitle}>リワード一覧表</AppText>
 
             <View style={styles.listContainer}>
-              <ListHeader isExpanded={false} onToggle={toggle} />
+              <ListHeader isExpanded={false} onToggle={toggle} expText={expText} />
               {renderPreviewRewards()}
             </View>
           </ScrollView>

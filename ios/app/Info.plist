@@ -28,6 +28,19 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>com.raitsumugu.child-app</string>
+          <string>com.raitsumugu.child-app</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>exp+child-app</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.1027022029779-0q6rpgi90bfpgtb9ri34rhuud5dmaad6</string>
         </array>
       </dict>
     </array>

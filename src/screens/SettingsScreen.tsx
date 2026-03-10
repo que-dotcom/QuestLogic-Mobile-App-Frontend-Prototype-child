@@ -207,7 +207,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const NOTIF_IMG_W = SCREEN_W - 20 - 24; // sectionsContainer margin×2 + sectionBody padding×2
 
 export default function SettingsScreen() {
-  const { user, updateLocalUserName, refreshUser } = useAuth();
+  const { user, updateLocalUserName, refreshUser, logout } = useAuth();
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -564,7 +564,7 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert('ログアウト', '本当にログアウトしますか？', [
       { text: 'キャンセル', style: 'cancel' },
-      { text: 'ログアウト', style: 'destructive', onPress: () => {} },
+      { text: 'ログアウト', style: 'destructive', onPress: logout },
     ]);
   };
 
@@ -1253,7 +1253,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 48,
+    paddingBottom: 120,
   },
 
   // ── トップバー ────────────────────────────────────────────────────────────

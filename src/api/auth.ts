@@ -3,9 +3,9 @@ import type { LoginResponse, GoogleAuthRequest } from "../types/api";
 
 // Basic認証ヘッダー（開発用）
 // .env の EXPO_PUBLIC_TEST_BASIC_AUTH に "Basic <base64>" 形式で設定する。
-// 未設定の場合は既存の固定値にフォールバックする。
+// 未設定の場合は空文字列となり、サーバーが 401 を返す（アラート表示）。
 const BASIC_AUTH_HEADER =
-  process.env.EXPO_PUBLIC_TEST_BASIC_AUTH ?? "Basic YWRtaW46UXVlc3QyNDA0";
+  process.env.EXPO_PUBLIC_TEST_BASIC_AUTH ?? "";
 
 /**
  * GET /api/test/login/:role

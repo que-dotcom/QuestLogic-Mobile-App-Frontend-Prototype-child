@@ -44,13 +44,13 @@ export const submitQuest = async (
     uri: params.beforeImage.uri,
     name: params.beforeImage.name,
     type: params.beforeImage.type,
-  } as unknown as Blob);
+  } as unknown as Blob); // React Native FormData は { uri, name, type } を受け取る（Web Blob ではない）
 
   formData.append("afterImage", {
     uri: params.afterImage.uri,
     name: params.afterImage.name,
     type: params.afterImage.type,
-  } as unknown as Blob);
+  } as unknown as Blob); // React Native FormData は { uri, name, type } を受け取る（Web Blob ではない）
 
   if (params.subject) formData.append("subject", params.subject);
   if (params.topic) formData.append("topic", params.topic);

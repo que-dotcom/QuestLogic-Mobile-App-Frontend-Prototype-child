@@ -23,6 +23,9 @@
     },
     "web": {},
     "scheme": "com.raitsumugu.child-app",
+    "experiments": {
+      "reactCompiler": true
+    },
     "plugins": [
       "expo-font",
       "expo-secure-store",

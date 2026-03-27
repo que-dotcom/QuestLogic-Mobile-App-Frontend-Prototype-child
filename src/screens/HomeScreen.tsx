@@ -26,7 +26,6 @@ export default function HomeScreen({ navigation }: Props) {
     }, [refreshUser])
   );
 
-  // AuthContext の user.name を Single Source of Truth として使用（refreshUser 内で local_userName マージ済み）
   const userName = user?.name ?? 'ゲスト';
   const exp = user?.exp || 0;
   const currentMinutes =
@@ -51,12 +50,12 @@ export default function HomeScreen({ navigation }: Props) {
           {/* A. ヘッダー（プロフィール） */}
           <HeaderProfile title={title} userName={userName} />
 
-          {/* B. ステータスバー + バー画像ラベル */}
+          {/* B. ステータスバー */}
           <StatusBars
             level={currentLevel}
             exp={exp}
-            gameLimitMin={currentMinutes}
-            smartphoneLimitMin={currentMinutes}
+            freetimeRemainingMin={currentMinutes}
+            freetimeTotalMin={currentMinutes}
           />
 
           {/* C. メインエリア（地図/羊皮紙） */}

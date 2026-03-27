@@ -1,90 +1,103 @@
-import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Image, Animated, StyleSheet } from 'react-native';
 import AppText from './AppText';
 import { levelProgress, expProgressLabel } from '../utils/levelHelper';
 
 interface StatusBarsProps {
   level: number;
   exp: number;
-  gameLimitMin: number;
-  smartphoneLimitMin: number;
+  freetimeRemainingMin: number;
+  freetimeTotalMin: number;
 }
 
 /**
- * Status bar (Group 353): Figma width=325, height=87 → aspectRatio ≈ 3.74
- * 各バー行の画像は細い線のアイコンとして表示し、右横にラベルテキストを配置。
+ * Status_bar.png (325×87) をフレームとして使用し、
+ * バー部分に Animated.View を絶対配置でオーバーレイする。
+ *
+ * 画像内のバー行 (% は Status_bar.png の幅/高さ基準):
+ *   左端(円の右側): left ≈ 27%
+ *   右端(宝石の左側): right ≈ 4%
+ *   Row1 (Freetime): top ≈ 9%,  height ≈ 12%
+ *   Row3 (EXP):      top ≈ 72%, height ≈ 12%
  */
-const STATUS_BAR_ASPECT_RATIO = 325 / 87;
-
-const BAR_ROWS: Array<{
-  image: ReturnType<typeof require>;
-  getLabel: (props: StatusBarsProps) => string;
-  color: string;
-}> = [
-  {
-    image: require('../../asset/home/images/Game_bar.png'),
-    getLabel: ({ gameLimitMin }) => `Game ${gameLimitMin}min`,
-    color: '#F08080',
-  },
-  {
-    image: require('../../asset/home/images/Smartphone_bar.png'),
-    getLabel: ({ smartphoneLimitMin }) => `Smartphone ${smartphoneLimitMin}min`,
-    color: '#87CEFA',
-  },
-  {
-    image: require('../../asset/home/images/Level_bar.png'),
-    getLabel: ({ level }) => `Level ${level}`,
-    color: '#90EE90',
-  },
-];
-
+const STATUS_BAR_ASPECT = 3580 / 1152; // Status＿bar2.png の実寸
 
 export default function StatusBars({
   level,
   exp,
-  gameLimitMin,
-  smartphoneLimitMin,
+  freetimeRemainingMin,
+  freetimeTotalMin,
 }: StatusBarsProps) {
-  const props = { level, exp, gameLimitMin, smartphoneLimitMin };
-  const progress = levelProgress(level, exp);
-  const progressLabel = expProgressLabel(level, exp);
+  const freetimeAnim = useRef(new Animated.Value(0)).current;
+  const expBarAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const freetimeProgress =
+      freetimeTotalMin > 0 ? Math.min(1, freetimeRemainingMin / freetimeTotalMin) : 0;
+    const lvProgress = levelProgress(level, exp);
+
+    Animated.parallel([
+      Animated.timing(freetimeAnim, {
+        toValue: freetimeProgress,
+        duration: 600,
+        useNativeDriver: false,
+      }),
+      Animated.timing(expBarAnim, {
+        toValue: lvProgress,
+        duration: 600,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [freetimeRemainingMin, freetimeTotalMin, level, exp]);
+
+  const freetimeWidth = freetimeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+  const expBarWidth = expBarAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <View style={styles.container}>
-      {/* Status bar 画像 + Lv.テキストを円の中央に重ね表示 */}
-      <View style={styles.statusBarWrapper}>
+      {/* Status_bar.png フレーム + バーオーバーレイ */}
+      <View style={styles.frameWrapper}>
+        {/* Row1: Freetime バー（画像の下に描画） */}
+        <View style={styles.barTrackRow1} pointerEvents="none">
+          <Animated.View
+            style={[styles.barFill, { width: freetimeWidth, backgroundColor: '#C0392B' }]}
+          />
+        </View>
+
+        {/* Row3: EXP バー（画像の下に描画） */}
+        <View style={styles.barTrackRow3} pointerEvents="none">
+          <Animated.View
+            style={[styles.barFill, { width: expBarWidth, backgroundColor: '#90EE90' }]}
+          />
+        </View>
+
+        {/* フレーム画像（バーの上に重ねる） */}
         <Image
-          source={require('../../asset/home/images/Status_bar.png')}
-          style={styles.statusBarImage}
-          resizeMode="contain"
+          source={require('../../asset/home/images/Status_bar2.png')}
+          style={styles.frameImage}
+          resizeMode="stretch"
         />
+
+        {/* Lv. バッジ（最前面） */}
         <View style={styles.levelBadge} pointerEvents="none">
           <AppText style={styles.levelText}>Lv.{level}</AppText>
         </View>
       </View>
 
-      {/* 3本のバー画像 + テキストを横並びで縦に配置 */}
-      <View style={styles.barsColumn}>
-        {BAR_ROWS.map(({ image, getLabel, color }, index) => (
-          <View key={index} style={styles.barRow}>
-            <Image
-              source={image}
-              style={styles.barImage}
-              resizeMode="stretch"
-            />
-            <AppText style={[styles.barLabel, { color }]}>
-              {getLabel(props)}
-            </AppText>
-          </View>
-        ))}
-
-        {/* EXP 進捗バー */}
-        <View style={styles.expContainer}>
-          <View style={styles.expBarTrack}>
-            <View style={[styles.expBarFill, { width: `${progress * 100}%` }]} />
-          </View>
-          <AppText style={styles.expLabel}>{progressLabel}</AppText>
-        </View>
+      {/* ラベル行 */}
+      <View style={styles.labelsRow}>
+        <AppText style={[styles.barLabel, { color: '#C0392B' }]}>
+          Freetime {freetimeRemainingMin}min
+        </AppText>
+        <AppText style={[styles.barLabel, { color: '#90EE90' }]}>
+          EXP {expProgressLabel(level, exp)}
+        </AppText>
       </View>
     </View>
   );
@@ -94,24 +107,21 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: 8,
     marginTop: 4,
-    backgroundColor: 'transparent',
-    alignItems: 'flex-start',
+    marginLeft: '4%',
   },
-  statusBarWrapper: {
-    width: '100%',
-    aspectRatio: STATUS_BAR_ASPECT_RATIO,
-    backgroundColor: 'transparent',
+  frameWrapper: {
+    width: '90%',
+    aspectRatio: STATUS_BAR_ASPECT,
+    position: 'relative',
   },
-  statusBarImage: {
+  frameImage: {
     width: '100%',
     height: '100%',
   },
   levelBadge: {
     position: 'absolute',
-    // Figma: Lv.1 テキスト中心 x ≈ 127.93 / 325px = ~39% の位置に合わせる
-    // left: 22% + width: 34% の中心 = 39%
-    left: '5%',
-    width: '34%',
+    left: '2%',
+    width: '26%',
     top: 0,
     bottom: 0,
     alignItems: 'center',
@@ -120,41 +130,39 @@ const styles = StyleSheet.create({
   levelText: {
     fontSize: 16,
     color: '#ffffff',
+    textAlign: 'center',
   },
-  barsColumn: {
-    marginTop: 6,
-    gap: 6,
+  // バートラック：画像内のバー行に合わせて絶対配置
+  barTrackRow1: {
+    position: 'absolute',
+    left: '27%',
+    right: '3%',
+    top: '19%',
+    height: '20%',
+    overflow: 'hidden',
+    borderRadius: 999,
   },
-  barRow: {
+  barTrackRow3: {
+    position: 'absolute',
+    left: '27%',
+    right: '3%',
+    top: '66%',
+    height: '20%',
+    overflow: 'hidden',
+    borderRadius: 999,
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 999,
+    opacity: 0.75,
+  },
+  labelsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  barImage: {
-    width: 80,
-    height: 10,
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingHorizontal: 2,
   },
   barLabel: {
-    fontSize: 14,
-  },
-  expContainer: {
-    marginTop: 4,
-    gap: 3,
-  },
-  expBarTrack: {
-    width: 160,
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  expBarFill: {
-    height: '100%',
-    backgroundColor: '#FFD700',
-    borderRadius: 4,
-  },
-  expLabel: {
-    fontSize: 11,
-    color: '#FFD700',
+    fontSize: 12,
   },
 });

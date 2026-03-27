@@ -1,3 +1,9 @@
+# macOS のメタデータファイル
+.DS_Store
+
+# iOS ネイティブコード（Expo マネージドワークフローでは不要）
+ios/
+
 # npm / Node.js の依存パッケージ（npm install で再生成可能）
 node_modules/
 
